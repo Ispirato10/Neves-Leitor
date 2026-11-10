@@ -12,20 +12,27 @@
 }
 
 @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   body {
-    background-color: #ffffff !important;
+    background: #ffffff !important;
     color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-  /* Hide all UI shell elements when printing */
-  body > div:not(#root),
-  #root > div:not(.print-container) {
-    /* hide outer shell */
-  }
-  .print\:hidden,
-  button,
-  header,
-  nav {
+  /* Hide all app chrome and modal backgrounds during print */
+  header, nav, footer, button, .fixed:not(:has(#danfe-native-preview-element)), .backdrop-blur-md {
     display: none !important;
+  }
+  #danfe-native-preview-element {
+    display: block !important;
+    position: static !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    transform: none !important;
   }
   .danfe-page-sheet {
     box-shadow: none !important;
@@ -33,12 +40,12 @@
     margin: 0 auto !important;
     padding: 0 !important;
     width: 210mm !important;
-    min-h: 297mm !important;
+    min-height: 297mm !important;
     page-break-after: always !important;
     break-after: page !important;
   }
   @page {
     size: A4 portrait;
-    margin: 0;
+    margin: 0mm;
   }
 }

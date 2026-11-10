@@ -55,7 +55,6 @@ function convertOklchToRgb(match: string): string {
 
 function sanitizeOklchInDocument(clonedDoc: Document): void {
   try {
-    // 1. Sanitize all <style> tag content
     const styleElements = clonedDoc.querySelectorAll('style');
     styleElements.forEach((styleEl) => {
       if (styleEl.textContent && styleEl.textContent.includes('oklch')) {
@@ -63,7 +62,6 @@ function sanitizeOklchInDocument(clonedDoc: Document): void {
       }
     });
 
-    // 2. Sanitize all inline styles on elements
     const allNodes = clonedDoc.querySelectorAll('*');
     allNodes.forEach((node) => {
       const el = node as HTMLElement;
@@ -88,7 +86,7 @@ export async function captureCanvasFromElement(element: HTMLElement): Promise<HT
   element.style.width = '210mm';
 
   const canvas = await html2canvas(element, {
-    scale: 2.5,
+    scale: 2.2,
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff',
@@ -111,83 +109,56 @@ export async function generatePdfBlobForDocument(
   doc: FiscalDocument,
   customization?: DanfeCustomization
 ): Promise<Blob> {
-  // 1. Check if the DANFE element is currently rendered on screen in the viewer modal
   const existingElement = document.getElementById('danfe-native-preview-element');
   const zoomWrapper = document.getElementById('danfe-zoom-wrapper');
 
+  let canvas: HTMLCanvasElement;
+
   if (existingElement) {
-    // Temporarily reset modal zoom transform during capture so html2canvas gets true 100% resolution
     const originalTransform = zoomWrapper ? zoomWrapper.style.transform : '';
-    if (zoomWrapper) {
-      zoomWrapper.style.transform = 'none';
-    }
+    if (zoomWrapper) zoomWrapper.style.transform = 'none';
 
-    const pageSheets = Array.from(existingElement.querySelectorAll('.danfe-page-sheet')) as HTMLElement[];
+    canvas = await captureCanvasFromElement(existingElement as HTMLElement);
 
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true,
-    });
+    if (zoomWrapper) zoomWrapper.style.transform = originalTransform;
+  } else {
+    const tempContainer = document.createElement('div');
+    tempContainer.id = `temp-danfe-mount-${Date.now()}`;
+    tempContainer.style.position = 'fixed';
+    tempContainer.style.left = '0';
+    tempContainer.style.top = '0';
+    tempContainer.style.width = '210mm';
+    tempContainer.style.opacity = '0';
+    tempContainer.style.pointerEvents = 'none';
+    tempContainer.style.zIndex = '-9999';
+    tempContainer.style.backgroundColor = '#ffffff';
+    document.body.appendChild(tempContainer);
 
-    const pdfWidth = 210;
-    const pdfHeight = 297;
+    const root = createRoot(tempContainer);
+    root.render(
+      React.createElement(DanfeView, {
+        doc,
+        customization: customization || {
+          showCanhoto: true,
+          canhotoPosition: 'top',
+          compactMode: false,
+          showIBPT: true,
+          fontSize: 'sm',
+        },
+        idToTarget: `temp-danfe-inner-${doc.id}`,
+      })
+    );
 
-    if (pageSheets.length > 0) {
-      for (let i = 0; i < pageSheets.length; i++) {
-        if (i > 0) pdf.addPage('a4', 'portrait');
-        const pageCanvas = await captureCanvasFromElement(pageSheets[i]);
-        const imgData = pageCanvas.toDataURL('image/jpeg', 0.98);
-        pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-      }
-    } else {
-      const canvas = await captureCanvasFromElement(existingElement as HTMLElement);
-      const imgData = canvas.toDataURL('image/jpeg', 0.98);
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // Restore zoom transform on modal viewport
-    if (zoomWrapper) {
-      zoomWrapper.style.transform = originalTransform;
-    }
+    const innerElement = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
+    canvas = await captureCanvasFromElement(innerElement as HTMLElement);
 
-    return pdf.output('blob');
+    root.unmount();
+    document.body.removeChild(tempContainer);
   }
 
-  // 2. Fallback: Dynamically mount a temporary DOM element if viewer modal is closed
-  const tempContainer = document.createElement('div');
-  tempContainer.id = `temp-danfe-mount-${Date.now()}`;
-  tempContainer.style.position = 'fixed';
-  tempContainer.style.left = '0';
-  tempContainer.style.top = '0';
-  tempContainer.style.width = '210mm';
-  tempContainer.style.opacity = '0';
-  tempContainer.style.pointerEvents = 'none';
-  tempContainer.style.zIndex = '-9999';
-  tempContainer.style.backgroundColor = '#ffffff';
-  document.body.appendChild(tempContainer);
-
-  const root = createRoot(tempContainer);
-  root.render(
-    React.createElement(DanfeView, {
-      doc,
-      customization: customization || {
-        showCanhoto: true,
-        canhotoPosition: 'top',
-        compactMode: false,
-        showIBPT: true,
-        fontSize: 'sm',
-      },
-      idToTarget: `temp-danfe-inner-${doc.id}`,
-    })
-  );
-
-  // Short pause to allow Barcode canvas and QR Code canvas to finish drawing
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  const innerElement = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
-  const pageSheets = Array.from(innerElement.querySelectorAll('.danfe-page-sheet')) as HTMLElement[];
+  const imgData = canvas.toDataURL('image/jpeg', 0.98);
 
   const pdf = new jsPDF({
     orientation: 'portrait',
@@ -196,26 +167,23 @@ export async function generatePdfBlobForDocument(
     compress: true,
   });
 
-  const pdfWidth = 210;
-  const pdfHeight = 297;
+  const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+  const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+  const imgWidth = pdfWidth;
+  const imgHeight = (canvas.height * pdfWidth) / canvas.width;
 
-  if (pageSheets.length > 0) {
-    for (let i = 0; i < pageSheets.length; i++) {
-      if (i > 0) pdf.addPage('a4', 'portrait');
-      const pageSheet = pageSheets[i];
-      const pageCanvas = await captureCanvasFromElement(pageSheet);
-      const imgData = pageCanvas.toDataURL('image/jpeg', 0.98);
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-    }
-  } else {
-    const canvas = await captureCanvasFromElement(innerElement as HTMLElement);
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+  let heightLeft = imgHeight;
+  let position = 0;
+
+  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+  heightLeft -= pdfHeight;
+
+  while (heightLeft >= 3) {
+    position = heightLeft - imgHeight;
+    pdf.addPage();
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
+    heightLeft -= pdfHeight;
   }
-
-  // Clean up temporary mount
-  root.unmount();
-  document.body.removeChild(tempContainer);
 
   return pdf.output('blob');
 }
@@ -268,7 +236,6 @@ export async function downloadMultipleDanfesZip(
     }
   }
 
-  // Create Summary CSV inside Zip
   const csvContent = generateCsvString(docs);
   zip.file('Sumario_Notas_Fiscais.csv', csvContent);
 
@@ -319,7 +286,7 @@ export function generateCsvString(docs: FiscalDocument[]): string {
   ]);
 
   const csvBody = [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
-  return '\uFEFF' + csvBody; // UTF-8 BOM for Excel
+  return '\uFEFF' + csvBody;
 }
 
 export function exportDocsToCsv(docs: FiscalDocument[]): void {
@@ -328,7 +295,7 @@ export function exportDocsToCsv(docs: FiscalDocument[]): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `Relatorio_Notas_Fiscais_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `Relatorio_Notas_Fiscais_${new Date().toISOString().slice(0, 10)}.zip` || `Relatorio_Notas_Fiscais_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
