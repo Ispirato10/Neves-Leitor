@@ -1,0 +1,6 @@
+{
+  "name": "Leitor de XML e Gerador de DANFE PDF",
+  "description": "Leitor e conversor de XML de Notas Fiscais (NF-e, NFC-e, CT-e, MDF-e) com visualizador de PDF nativo integrado, download de DANFE e gestão em lote.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
