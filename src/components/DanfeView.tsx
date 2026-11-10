@@ -12,7 +12,7 @@ interface DanfeViewProps {
 // Function to chunk products into pages according to SEFAZ rules
 function paginateProducts(items: ProdutoItem[]): ProdutoItem[][] {
   const PAGE_1_MAX_ITEMS = 7;
-  const CONTINUATION_PAGE_MAX_ITEMS = 20;
+  const CONTINUATION_PAGE_MAX_ITEMS = 18;
 
   if (items.length <= PAGE_1_MAX_ITEMS) {
     return [items];
@@ -43,6 +43,8 @@ export const DanfeView: React.FC<DanfeViewProps> = ({
 }) => {
   const isNFCe = doc.docType === 'NFCE';
   const isCTe = doc.docType === 'CTE';
+  const isCanceled = doc.status === 'Cancelada';
+  const isHomologation = doc.protocolo?.tpAmb === 'Homologação';
 
   const totais = doc.totais;
   const emit = doc.emitente;
@@ -67,7 +69,7 @@ export const DanfeView: React.FC<DanfeViewProps> = ({
         return (
           <div
             key={pageIdx}
-            className={`bg-white text-black p-4 w-[210mm] min-h-[297mm] mx-auto shadow-2xl print:shadow-none print:p-0 border border-slate-300 print:border-none print:break-after-page relative ${
+            className={`bg-white text-black p-4 w-[210mm] min-h-[297mm] mx-auto shadow-2xl print:shadow-none print:p-0 border border-slate-300 print:border-none print:break-after-page relative overflow-hidden ${
               customization.fontSize === 'xs'
                 ? 'text-[8.5px]'
                 : customization.fontSize === 'base'
@@ -76,6 +78,22 @@ export const DanfeView: React.FC<DanfeViewProps> = ({
             }`}
             style={{ boxSizing: 'border-box' }}
           >
+            {/* WATERMARK STAMPS FOR CANCELED OR HOMOLOGATION NOTES */}
+            {isCanceled && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 opacity-15 rotate-[-35deg]">
+                <span className="text-red-600 border-8 border-red-600 font-black text-6xl tracking-widest px-8 py-4 uppercase text-center rounded-2xl">
+                  NOTA FISCAL CANCELADA
+                </span>
+              </div>
+            )}
+            {isHomologation && !isCanceled && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 opacity-15 rotate-[-35deg]">
+                <span className="text-amber-600 border-8 border-amber-600 font-black text-4xl tracking-widest px-6 py-3 uppercase text-center rounded-xl">
+                  AMBIENTE DE HOMOLOGAÇÃO<br />SEM VALOR FISCAL
+                </span>
+              </div>
+            )}
+
             {/* ---------------- CANHOTO (STUB) - PAGE 1 ONLY ---------------- */}
             {isFirstPage && customization.showCanhoto && customization.canhotoPosition === 'top' && !isNFCe && (
               <div className="mb-1.5 border border-black p-1 text-[8.5px] relative">
@@ -374,88 +392,104 @@ export const DanfeView: React.FC<DanfeViewProps> = ({
             )}
 
             {/* ---------------- TRANSPORTADOR (PAGE 1 ONLY) ---------------- */}
-            {isFirstPage && !isNFCe && (
-              <div className="mb-1">
-                <div className="bg-slate-200 border border-black border-b-0 px-1 py-0.5 font-bold text-[7.5px] uppercase">
-                  TRANSPORTADOR / VOLUMES TRANSPORTADOS
-                </div>
-                <div className="border border-black grid grid-cols-12 divide-x divide-y divide-black">
-                  <div className="col-span-5 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">RAZÃO SOCIAL</span>
-                    <span className="font-bold text-[8px] uppercase">{transp.transporta?.xNome || 'SEM OCORRÊNCIA DE TRANSPORTE'}</span>
-                  </div>
-                  <div className="col-span-3 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">FRETE POR CONTA</span>
-                    <span className="font-bold text-[7.5px] uppercase">{transp.modFreteTexto}</span>
-                  </div>
-                  <div className="col-span-1 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">CÓDIGO ANTT</span>
-                    <span className="font-semibold text-[7.5px]">{transp.veicTransp?.rntc || '-'}</span>
-                  </div>
-                  <div className="col-span-1.5 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">PLACA VEÍCULO</span>
-                    <span className="font-semibold text-[7.5px]">{transp.veicTransp?.placa || '-'}</span>
-                  </div>
-                  <div className="col-span-0.5 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">UF</span>
-                    <span className="font-semibold text-[7.5px]">{transp.veicTransp?.uf || '-'}</span>
-                  </div>
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">CNPJ / CPF</span>
-                    <span className="font-semibold text-[8px] font-mono">{transp.transporta?.cnpjCpf || '-'}</span>
-                  </div>
+            {isFirstPage && !isNFCe && (() => {
+              // Calculate volume totals if multiple volumes exist
+              const volumesList = transp.vol || [];
+              const hasVolumes = volumesList.length > 0;
+              const totalQVol = hasVolumes ? volumesList.reduce((acc, v) => acc + (v.qVol || 0), 0) : null;
+              const totalPesoB = hasVolumes ? volumesList.reduce((acc, v) => acc + (v.pesoB || 0), 0) : null;
+              const totalPesoL = hasVolumes ? volumesList.reduce((acc, v) => acc + (v.pesoL || 0), 0) : null;
+              
+              const especieText = hasVolumes ? Array.from(new Set(volumesList.map(v => v.esp).filter(Boolean))).join(', ') || volumesList[0]?.esp : '-';
+              const marcaText = hasVolumes ? Array.from(new Set(volumesList.map(v => v.marca).filter(Boolean))).join(', ') || volumesList[0]?.marca : '-';
+              const numVolText = hasVolumes ? volumesList.map(v => v.nVol).filter(Boolean).join(', ') || volumesList[0]?.nVol : '-';
 
-                  <div className="col-span-5 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">ENDEREÇO</span>
-                    <span className="font-semibold text-[7.5px] uppercase">{transp.transporta?.xEnder || '-'}</span>
+              return (
+                <div className="mb-1">
+                  <div className="bg-slate-200 border border-black border-b-0 px-1 py-0.5 font-bold text-[7.5px] uppercase">
+                    TRANSPORTADOR / VOLUMES TRANSPORTADOS
                   </div>
-                  <div className="col-span-3 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">MUNICÍPIO</span>
-                    <span className="font-semibold text-[7.5px] uppercase">{transp.transporta?.xMun || '-'}</span>
-                  </div>
-                  <div className="col-span-1 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">UF</span>
-                    <span className="font-semibold text-[7.5px]">{transp.transporta?.uf || '-'}</span>
-                  </div>
-                  <div className="col-span-3 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">INSCRIÇÃO ESTADUAL</span>
-                    <span className="font-semibold text-[7.5px]">{transp.transporta?.ie || '-'}</span>
-                  </div>
+                  <div className="border border-black grid grid-cols-12 divide-x divide-y divide-black">
+                    {/* LINHA 1 */}
+                    <div className="col-span-5 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">RAZÃO SOCIAL</span>
+                      <span className="font-bold text-[8px] uppercase">{transp.transporta?.xNome || 'SEM OCORRÊNCIA DE TRANSPORTE'}</span>
+                    </div>
+                    <div className="col-span-3 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">FRETE POR CONTA</span>
+                      <span className="font-bold text-[7.5px] uppercase">{transp.modFreteTexto}</span>
+                    </div>
+                    <div className="col-span-1 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">CÓD. ANTT</span>
+                      <span className="font-semibold text-[7.5px]">{transp.veicTransp?.rntc || '-'}</span>
+                    </div>
+                    <div className="col-span-1 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">PLACA VEÍC.</span>
+                      <span className="font-semibold text-[7.5px]">{transp.veicTransp?.placa || '-'}</span>
+                    </div>
+                    <div className="col-span-0.5 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">UF</span>
+                      <span className="font-semibold text-[7.5px]">{transp.veicTransp?.uf || '-'}</span>
+                    </div>
+                    <div className="col-span-1.5 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">CNPJ / CPF</span>
+                      <span className="font-semibold text-[8px] font-mono">{transp.transporta?.cnpjCpf || '-'}</span>
+                    </div>
 
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">QUANTIDADE</span>
-                    <span className="font-semibold text-[8px]">{transp.vol?.[0]?.qVol ?? '-'}</span>
-                  </div>
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">ESPÉCIE</span>
-                    <span className="font-semibold text-[8px] uppercase">{transp.vol?.[0]?.esp || '-'}</span>
-                  </div>
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">MARCA</span>
-                    <span className="font-semibold text-[8px] uppercase">{transp.vol?.[0]?.marca || '-'}</span>
-                  </div>
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">NUMERAÇÃO</span>
-                    <span className="font-semibold text-[8px]">{transp.vol?.[0]?.nVol || '-'}</span>
-                  </div>
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">PESO BRUTO (KG)</span>
-                    <span className="font-semibold text-[8px] font-mono">{transp.vol?.[0]?.pesoB ? formatNumber(transp.vol[0].pesoB, 3) : '-'}</span>
-                  </div>
-                  <div className="col-span-2 p-1">
-                    <span className="text-[6.5px] font-bold uppercase block text-slate-600">PESO LÍQUIDO (KG)</span>
-                    <span className="font-semibold text-[8px] font-mono">{transp.vol?.[0]?.pesoL ? formatNumber(transp.vol[0].pesoL, 3) : '-'}</span>
+                    {/* LINHA 2 */}
+                    <div className="col-span-5 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">ENDEREÇO</span>
+                      <span className="font-semibold text-[7.5px] uppercase">{transp.transporta?.xEnder || '-'}</span>
+                    </div>
+                    <div className="col-span-3 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">MUNICÍPIO</span>
+                      <span className="font-semibold text-[7.5px] uppercase">{transp.transporta?.xMun || '-'}</span>
+                    </div>
+                    <div className="col-span-1 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">UF</span>
+                      <span className="font-semibold text-[7.5px]">{transp.transporta?.uf || '-'}</span>
+                    </div>
+                    <div className="col-span-3 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">INSCRIÇÃO ESTADUAL</span>
+                      <span className="font-semibold text-[7.5px]">{transp.transporta?.ie || '-'}</span>
+                    </div>
+
+                    {/* LINHA 3 - VOLUMES */}
+                    <div className="col-span-2 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">QUANTIDADE</span>
+                      <span className="font-semibold text-[8px] font-mono">{totalQVol !== null && totalQVol > 0 ? totalQVol : '-'}</span>
+                    </div>
+                    <div className="col-span-2 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">ESPÉCIE</span>
+                      <span className="font-semibold text-[8px] uppercase">{especieText || '-'}</span>
+                    </div>
+                    <div className="col-span-2 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">MARCA</span>
+                      <span className="font-semibold text-[8px] uppercase">{marcaText || '-'}</span>
+                    </div>
+                    <div className="col-span-2 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">NUMERAÇÃO</span>
+                      <span className="font-semibold text-[8px]">{numVolText || '-'}</span>
+                    </div>
+                    <div className="col-span-2 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">PESO BRUTO (KG)</span>
+                      <span className="font-semibold text-[8px] font-mono">{totalPesoB !== null && totalPesoB > 0 ? formatNumber(totalPesoB, 3) : '-'}</span>
+                    </div>
+                    <div className="col-span-2 p-1">
+                      <span className="text-[6.5px] font-bold uppercase block text-slate-600">PESO LÍQUIDO (KG)</span>
+                      <span className="font-semibold text-[8px] font-mono">{totalPesoL !== null && totalPesoL > 0 ? formatNumber(totalPesoL, 3) : '-'}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ---------------- DADOS DOS PRODUTOS / SERVIÇOS ---------------- */}
             <div className="mb-1">
               <div className="bg-slate-200 border border-black border-b-0 px-1 py-0.5 font-bold text-[7.5px] uppercase flex justify-between items-center">
                 <span>DADOS DO PRODUTO / SERVIÇO</span>
                 {totalPages > 1 && (
-                  <span className="text-slate-600">
+                  <span className="text-slate-600 font-mono">
                     EXIBINDO ITENS DE {pageItems[0]?.nItem} A {pageItems[pageItems.length - 1]?.nItem} (TOTAL {doc.produtos.length})
                   </span>
                 )}

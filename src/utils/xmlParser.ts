@@ -4,9 +4,13 @@ import { FiscalDocument, DocType, ProdutoItem, Volume, Duplicata } from '../type
 function getText(parent: Element | null | undefined, tagNames: string[]): string {
   if (!parent) return '';
   for (const tag of tagNames) {
-    const el = parent.querySelector(tag) || Array.from(parent.children).find(c => c.localName === tag);
-    if (el && el.textContent) {
-      return el.textContent.trim();
+    try {
+      const el = parent.querySelector(tag) || Array.from(parent.children).find(c => c.localName === tag);
+      if (el && el.textContent) {
+        return el.textContent.trim();
+      }
+    } catch {
+      // Fallback
     }
   }
   return '';
@@ -15,7 +19,7 @@ function getText(parent: Element | null | undefined, tagNames: string[]): string
 function getNum(parent: Element | null | undefined, tagNames: string[]): number {
   const val = getText(parent, tagNames);
   if (!val) return 0;
-  const num = parseFloat(val);
+  const num = parseFloat(val.replace(',', '.'));
   return isNaN(num) ? 0 : num;
 }
 
@@ -95,12 +99,12 @@ export function formatDateShort(dateStr: string): string {
 }
 
 const MODALIDADE_FRETE: Record<string, string> = {
-  '0': '0-Contratação do Frete por conta do Remetente (CIF)',
-  '1': '1-Contratação do Frete por conta do Destinatário (FOB)',
-  '2': '2-Contratação do Frete por conta de Terceiros',
-  '3': '3-Transporte Próprio por conta do Remetente',
-  '4': '4-Transporte Próprio por conta do Destinatário',
-  '9': '9-Sem Ocorrência de Transporte',
+  '0': '0-REMETENTE (CIF)',
+  '1': '1-DESTINATÁRIO (FOB)',
+  '2': '2-TERCEIROS',
+  '3': '3-PRÓPRIO REMETENTE',
+  '4': '4-PRÓPRIO DESTINATÁRIO',
+  '9': '9-SEM FRETE',
 };
 
 const FORMA_PAGAMENTO: Record<string, string> = {
@@ -116,8 +120,8 @@ const FORMA_PAGAMENTO: Record<string, string> = {
   '15': 'Boleto Bancário',
   '16': 'Depósito Bancário',
   '17': 'PIX',
-  '18': 'Transferência bancária, Carteira Digital',
-  '19': 'Fidelidade, Cashback, Crédito Virtual',
+  '18': 'Transferência Bancária / Carteira Digital',
+  '19': 'Fidelidade / Cashback / Crédito Virtual',
   '90': 'Sem Pagamento',
   '99': 'Outros',
 };
@@ -128,10 +132,14 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
 
   const parserError = xmlDoc.querySelector('parsererror');
   if (parserError) {
-    throw new Error('Formato de XML inválido ou corrompido.');
+    throw new Error('Formato de XML inválido ou estrutura corrompida.');
   }
 
-  // Detect root element and Document Type
+  // Detect Event Cancelation
+  const procEventoNFe = xmlDoc.querySelector('procEventoNFe') || xmlDoc.querySelector('procEventoCTe');
+  const isCanceled = !!procEventoNFe || xmlString.includes('101') || xmlString.includes('135') || xmlString.toLowerCase().includes('cancelamento');
+
+  // Detect Document Type
   let docType: DocType = 'NFE';
   const infNFe = xmlDoc.querySelector('infNFe') || xmlDoc.querySelector('infNfe');
   const infCte = xmlDoc.querySelector('infCte');
@@ -142,7 +150,7 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
   else if (infMDFe) docType = 'MDFE';
   else if (infNfse) docType = 'NFSE';
 
-  // Ide details
+  // Ide Node
   const ide = xmlDoc.querySelector('ide');
   const modelo = getText(ide, ['mod']) || (docType === 'NFE' ? '55' : '65');
   if (modelo === '65') docType = 'NFCE';
@@ -152,7 +160,7 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
   const natOp = getText(ide, ['natOp']) || 'Venda de mercadoria';
   const dhEmi = getText(ide, ['dhEmi', 'dEmi', 'dtEmissao']) || new Date().toISOString();
   const dhSaiEnt = getText(ide, ['dhSaiEnt', 'dSaiEnt']);
-  const tpNF = getNum(ide, ['tpNF']) || 1; // 1 = Saída
+  const tpNF = getNum(ide, ['tpNF']) || 1;
   const tpImp = getNum(ide, ['tpImp']) || 1;
 
   // Chave de Acesso
@@ -161,14 +169,15 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
   if (!chave && infCte) chave = infCte.getAttribute('Id')?.replace('CTe', '') || '';
   if (!chave && infMDFe) chave = infMDFe.getAttribute('Id')?.replace('MDFe', '') || '';
 
-  // Protocolo
+  // Protocolo SEFAZ
   const protNFe = xmlDoc.querySelector('protNFe') || xmlDoc.querySelector('protCTe') || xmlDoc.querySelector('protMDFe');
   const infProt = protNFe?.querySelector('infProt');
-  
+
   let protocolo;
   if (infProt) {
     const chNFeProt = getText(infProt, ['chNFe', 'chCTe', 'chMDFe']);
     if (chNFeProt && !chave) chave = chNFeProt;
+    const cStat = getText(infProt, ['cStat']) || '100';
     protocolo = {
       tpAmb: getText(infProt, ['tpAmb']) === '1' ? 'Produção' : 'Homologação',
       verAplic: getText(infProt, ['verAplic']) || 'SVRS',
@@ -176,19 +185,18 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
       dhRecbto: formatDate(getText(infProt, ['dhRecbto'])),
       nProt: getText(infProt, ['nProt']) || '135230001234567',
       digVal: getText(infProt, ['digVal']),
-      cStat: getText(infProt, ['cStat']) || '100',
+      cStat,
       xMotivo: getText(infProt, ['xMotivo']) || 'Autorizado o uso da NF-e',
     };
   } else if (chave) {
-    // Generate standard simulated protocol if missing in standalone NFe tag
     protocolo = {
       tpAmb: 'Produção',
       verAplic: 'SVRS_4.0',
       chNFe: chave,
       dhRecbto: formatDate(dhEmi),
       nProt: '135' + chave.slice(-12),
-      cStat: '100',
-      xMotivo: 'Autorizado o uso da NF-e',
+      cStat: isCanceled ? '101' : '100',
+      xMotivo: isCanceled ? 'Cancelamento de NF-e homologado' : 'Autorizado o uso da NF-e',
     };
   }
 
@@ -236,25 +244,21 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
     },
   };
 
-  // Produtos
+  // Produtos / Serviços
   const detNodes = Array.from(xmlDoc.querySelectorAll('det'));
   const produtos: ProdutoItem[] = detNodes.map((det, index) => {
     const prod = det.querySelector('prod');
     const imposto = det.querySelector('imposto');
-    
-    // ICMS
+
     const icmsNode = imposto?.querySelector('ICMS');
     const icmsChild = icmsNode ? icmsNode.children[0] : null;
 
-    // IPI
     const ipiNode = imposto?.querySelector('IPI');
     const ipiChild = ipiNode ? (ipiNode.querySelector('IPITrib') || ipiNode.querySelector('IPINT')) : null;
 
-    // PIS
     const pisNode = imposto?.querySelector('PIS');
     const pisChild = pisNode ? pisNode.children[0] : null;
 
-    // COFINS
     const cofinsNode = imposto?.querySelector('COFINS');
     const cofinsChild = cofinsNode ? cofinsNode.children[0] : null;
 
@@ -280,8 +284,8 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
       vOutro: getNum(prod, ['vOutro']),
       indTot: getText(prod, ['indTot']),
       icms: {
-        orig: getText(icmsChild, ['orig']),
-        CST_CSOSN: getText(icmsChild, ['CST', 'CSOSN']),
+        orig: getText(icmsChild, ['orig']) || '0',
+        CST_CSOSN: getText(icmsChild, ['CST', 'CSOSN']) || '00',
         vBC: getNum(icmsChild, ['vBC']),
         pICMS: getNum(icmsChild, ['pICMS']),
         vICMS: getNum(icmsChild, ['vICMS']),
@@ -337,44 +341,61 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
     vTotTrib: getNum(icmsTot, ['vTotTrib']),
   };
 
-  // If totais.vNF is 0 (e.g. calculated manually from products)
   if (totais.vNF === 0 && produtos.length > 0) {
     totais.vProd = produtos.reduce((acc, p) => acc + p.vProd, 0);
     totais.vNF = totais.vProd + totais.vST + totais.vIPI + totais.vFrete - totais.vDesc;
   }
 
-  // Transporte
+  // ---------------- TRANSPORTE & VOLUMES (RIGOROSO SEFAZ) ----------------
   const transp = xmlDoc.querySelector('transp');
   const transporta = transp?.querySelector('transporta');
+  const retTransp = transp?.querySelector('retTransp');
   const veicTransp = transp?.querySelector('veicTransp');
+  const reboque = transp?.querySelector('reboque');
   const volNodes = Array.from(transp?.querySelectorAll('vol') || []);
 
   const modFreteCode = getText(transp, ['modFrete']) || '9';
 
+  // Fallbacks for transport company data
+  const transpNome = getText(transporta, ['xNome']) || getText(retTransp, ['xNome']);
+  const transpCnpjCpf = formatCNPJorCPF(getText(transporta, ['CNPJ', 'CPF']) || getText(retTransp, ['CNPJ', 'CPF']));
+  const transpIe = getText(transporta, ['IE']) || getText(retTransp, ['IE']);
+  const transpEnder = getText(transporta, ['xEnder']);
+  const transpMun = getText(transporta, ['xMun']) || getText(retTransp, ['xMun']);
+  const transpUf = getText(transporta, ['UF']) || getText(retTransp, ['UF']);
+
+  // Vehicle data
+  const veicPlaca = getText(veicTransp, ['placa']) || getText(reboque, ['placa']);
+  const veicUf = getText(veicTransp, ['UF']) || getText(reboque, ['UF']);
+  const veicRntc = getText(veicTransp, ['RNTC']) || getText(reboque, ['RNTC']);
+
+  // Volume data list
+  const volumesList: Volume[] = volNodes.map(v => ({
+    qVol: getNum(v, ['qVol']),
+    esp: getText(v, ['esp']),
+    marca: getText(v, ['marca']),
+    nVol: getText(v, ['nVol']),
+    pesoL: getNum(v, ['pesoL']),
+    pesoB: getNum(v, ['pesoB']),
+  }));
+
   const transporte = {
     modFrete: modFreteCode,
     modFreteTexto: MODALIDADE_FRETE[modFreteCode] || `Código ${modFreteCode}`,
-    transporta: transporta ? {
-      cnpjCpf: formatCNPJorCPF(getText(transporta, ['CNPJ', 'CPF'])),
-      xNome: getText(transporta, ['xNome']),
-      ie: getText(transporta, ['IE']),
-      xEnder: getText(transporta, ['xEnder']),
-      xMun: getText(transporta, ['xMun']),
-      uf: getText(transporta, ['UF']),
+    transporta: transpNome || transpCnpjCpf ? {
+      cnpjCpf: transpCnpjCpf,
+      xNome: transpNome,
+      ie: transpIe,
+      xEnder: transpEnder,
+      xMun: transpMun,
+      uf: transpUf,
     } : undefined,
-    veicTransp: veicTransp ? {
-      placa: getText(veicTransp, ['placa']),
-      uf: getText(veicTransp, ['UF']),
-      rntc: getText(veicTransp, ['RNTC']),
+    veicTransp: veicPlaca || veicRntc ? {
+      placa: veicPlaca,
+      uf: veicUf,
+      rntc: veicRntc,
     } : undefined,
-    vol: volNodes.map(v => ({
-      qVol: getNum(v, ['qVol']),
-      esp: getText(v, ['esp']),
-      marca: getText(v, ['marca']),
-      nVol: getText(v, ['nVol']),
-      pesoL: getNum(v, ['pesoL']),
-      pesoB: getNum(v, ['pesoB']),
-    })),
+    vol: volumesList,
   };
 
   // Cobrança / Fatura / Duplicatas / Pagamentos
@@ -416,10 +437,10 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
     infCpl: getText(infAdicNode, ['infCpl']),
   };
 
-  // QR Code URL for NFCe
+  // QR Code URL
   const qrCodeUrl = getText(xmlDoc.querySelector('infNFeSupl'), ['qrCode']) || getText(xmlDoc.querySelector('infNfeSupl'), ['qrCode']);
 
-  const status = protocolo?.cStat === '100' ? 'Autorizada' : (protocolo?.cStat === '101' || protocolo?.cStat === '135' ? 'Cancelada' : 'Autorizada');
+  const status = isCanceled ? 'Cancelada' : (protocolo?.cStat === '100' ? 'Autorizada' : 'Autorizada');
 
   return {
     id: chave || `DOC_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,

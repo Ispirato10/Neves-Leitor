@@ -2,7 +2,6 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import JSZip from 'jszip';
 import { FiscalDocument } from '../types/nfe';
-import { formatCurrency } from './xmlParser';
 
 export async function generatePdfBlobFromElement(elementId: string): Promise<Blob> {
   const element = document.getElementById(elementId);
@@ -10,16 +9,20 @@ export async function generatePdfBlobFromElement(elementId: string): Promise<Blo
     throw new Error('Elemento DANFE não encontrado no DOM.');
   }
 
-  // Temporary container styling to ensure high visual quality during canvas render
+  // Preserve width during canvas capture
   const originalWidth = element.style.width;
   element.style.width = '210mm';
 
+  // High-resolution canvas capture for crisp vector text rendering
   const canvas = await html2canvas(element, {
-    scale: 2,
+    scale: 3,
     useCORS: true,
     logging: false,
     backgroundColor: '#ffffff',
-    windowWidth: 1200,
+    windowWidth: 1240,
+    scrollX: 0,
+    scrollY: 0,
+    imageTimeout: 0,
   });
 
   element.style.width = originalWidth;
@@ -30,23 +33,24 @@ export async function generatePdfBlobFromElement(elementId: string): Promise<Blo
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
+    compress: true,
   });
 
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = pdf.internal.pageSize.getHeight();
+  const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+  const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
   const imgWidth = pdfWidth;
   const imgHeight = (canvas.height * pdfWidth) / canvas.width;
 
   let heightLeft = imgHeight;
   let position = 0;
 
-  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
   heightLeft -= pdfHeight;
 
-  while (heightLeft >= 5) {
+  while (heightLeft >= 3) {
     position = heightLeft - imgHeight;
     pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
     heightLeft -= pdfHeight;
   }
 
@@ -55,7 +59,11 @@ export async function generatePdfBlobFromElement(elementId: string): Promise<Blo
 
 export async function downloadDanfePdf(doc: FiscalDocument, elementId: string = 'danfe-document-canvas'): Promise<void> {
   try {
-    const blob = await generatePdfBlobFromElement(elementId);
+    const targetId = document.getElementById('danfe-native-preview-element')
+      ? 'danfe-native-preview-element'
+      : (document.getElementById(elementId) ? elementId : 'danfe-native-preview-element');
+
+    const blob = await generatePdfBlobFromElement(targetId);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -67,7 +75,7 @@ export async function downloadDanfePdf(doc: FiscalDocument, elementId: string = 
     URL.revokeObjectURL(url);
   } catch (error) {
     console.error('Erro ao gerar PDF da DANFE:', error);
-    alert('Erro ao gerar PDF. Certifique-se que o documento está visível na tela.');
+    alert('Erro ao gerar PDF. Certifique-se de que a nota está visível na tela.');
   }
 }
 
@@ -78,39 +86,19 @@ export async function downloadMultipleDanfesZip(
   if (docs.length === 0) return;
 
   const zip = new JSZip();
-  const folder = zip.folder('DANFEs_PDF') || zip;
+  const folder = zip.folder('DANFEs_PDF_A4') || zip;
 
   for (let i = 0; i < docs.length; i++) {
     const doc = docs[i];
     if (onProgress) onProgress(i + 1, docs.length);
 
     try {
-      // Find or render element
-      const elementId = `danfe-temp-${doc.id}`;
-      let tempContainer = document.getElementById(elementId);
-      
-      let created = false;
-      if (!tempContainer) {
-        tempContainer = document.createElement('div');
-        tempContainer.id = elementId;
-        tempContainer.style.position = 'absolute';
-        tempContainer.style.left = '-9999px';
-        tempContainer.style.top = '-9999px';
-        document.body.appendChild(tempContainer);
-        created = true;
-      }
-
-      // We render a quick copy if needed or use main container
-      const targetId = document.getElementById('danfe-document-canvas') ? 'danfe-document-canvas' : elementId;
+      const targetId = 'danfe-native-preview-element';
       const blob = await generatePdfBlobFromElement(targetId);
 
       const cleanChave = doc.chave.replace(/\D/g, '');
       const fileName = `DANFE_${doc.docType}_N${doc.numero}_${cleanChave.slice(-8)}.pdf`;
       folder.file(fileName, blob);
-
-      if (created && tempContainer) {
-        document.body.removeChild(tempContainer);
-      }
     } catch (err) {
       console.error(`Erro ao adicionar ${doc.filename} ao ZIP:`, err);
     }
@@ -124,7 +112,7 @@ export async function downloadMultipleDanfesZip(
   const url = URL.createObjectURL(zipContent);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `DANFEs_Processadas_${new Date().toISOString().slice(0, 10)}.zip`;
+  link.download = `DANFEs_PDF_A4_${new Date().toISOString().slice(0, 10)}.zip`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
