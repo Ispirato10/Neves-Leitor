@@ -298,14 +298,6 @@ export const XmlListTable: React.FC<XmlListTableProps> = ({
                       <span>Ver DANFE A4</span>
                     </button>
                     <button
-                      onClick={() => onDownloadSinglePdf(doc)}
-                      className="py-2 px-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer shadow-xs transition-all"
-                      title="Baixar PDF DANFE"
-                    >
-                      <Download className="w-4 h-4" />
-                      <span>PDF</span>
-                    </button>
-                    <button
                       onClick={() => onDeleteDoc(doc.id)}
                       className="py-2 px-2 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 active:scale-95 rounded-xl text-xs font-bold flex items-center justify-center gap-1 cursor-pointer border border-slate-200 transition-all"
                       title="Remover Nota"

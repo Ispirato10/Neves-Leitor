@@ -248,15 +248,8 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
                 <span>Imprimir / PDF</span>
               </button>
 
-              <button
-                onClick={handleDirectDownload}
-                disabled={isDownloading}
-                className="px-3 py-1.5 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all flex items-center gap-1 shadow-sm shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-4 h-4" />
-                <span>{isDownloading ? 'Gerando...' : 'Baixar PDF'}</span>
-              </button>
             </div>
+
 
             <button
               onClick={onClose}
@@ -539,15 +532,6 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
             <span>Imprimir</span>
           </motion.button>
 
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={handleDirectDownload}
-            disabled={isDownloading}
-            className="py-2 px-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 shrink-0 flex-1"
-          >
-            <Download className="w-4 h-4" />
-            <span>{isDownloading ? 'Gerando...' : 'Baixar PDF'}</span>
-          </motion.button>
         </div>
       </motion.div>
     </AnimatePresence>

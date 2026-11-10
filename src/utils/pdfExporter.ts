@@ -9,45 +9,94 @@ const getHtml2Pdf = () => {
   return (html2pdf as any).default || html2pdf;
 };
 
+function convertOklchToRgb(match: string): string {
+  try {
+    const inner = match.replace(/^oklch\(/i, '').replace(/\)$/, '').trim();
+    const parts = inner.split(/[\s/]+/);
+    const lightnessStr = parts[0] || '0.5';
+    let lightness = 0.5;
+    if (lightnessStr.endsWith('%')) {
+      lightness = parseFloat(lightnessStr) / 100;
+    } else {
+      lightness = parseFloat(lightnessStr);
+    }
+
+    if (isNaN(lightness)) lightness = 0.5;
+
+    let r = 0, g = 0, b = 0;
+    if (lightness >= 0.95) {
+      r = 248; g = 250; b = 252; // #f8fafc
+    } else if (lightness >= 0.88) {
+      r = 241; g = 245; b = 249; // #f1f5f9
+    } else if (lightness >= 0.80) {
+      r = 226; g = 232; b = 240; // #e2e8f0
+    } else if (lightness >= 0.65) {
+      r = 203; g = 213; b = 225; // #cbd5e1
+    } else if (lightness >= 0.45) {
+      r = 100; g = 116; b = 139; // #64748b
+    } else if (lightness >= 0.25) {
+      r = 51; g = 65; b = 85; // #334155
+    } else {
+      r = 15; g = 23; b = 42; // #0f172a
+    }
+
+    return `rgb(${r}, ${g}, ${b})`;
+  } catch {
+    return 'rgb(0, 0, 0)';
+  }
+}
+
+function sanitizeStyleValue(val: string): string {
+  if (!val) return val;
+  if (val.includes('oklch') || val.includes('lab(') || val.includes('lch(')) {
+    if (val.includes('oklch')) {
+      return val.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
+    }
+    return val.replace(/(oklch|lab|lch|color)\([^)]+\)/gi, 'rgb(0, 0, 0)');
+  }
+  return val;
+}
+
 function applyComputedStyles(source: HTMLElement, target: HTMLElement): void {
   try {
     const computed = window.getComputedStyle(source);
     
-    const bg = computed.backgroundColor;
-    const color = computed.color;
-    const fontSize = computed.fontSize;
-    const fontWeight = computed.fontWeight;
-    const textAlign = computed.textAlign;
-    const borderTop = computed.borderTop;
-    const borderRight = computed.borderRight;
-    const borderBottom = computed.borderBottom;
-    const borderLeft = computed.borderLeft;
-    const paddingTop = computed.paddingTop;
-    const paddingRight = computed.paddingRight;
-    const paddingBottom = computed.paddingBottom;
-    const paddingLeft = computed.paddingLeft;
-    const width = computed.width;
+    const propsToCopy = [
+      'backgroundColor', 'color',
+      'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor',
+      'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+      'borderTopStyle', 'borderRightStyle', 'borderBottomStyle', 'borderLeftStyle',
+      'borderTopLeftRadius', 'borderTopRightRadius', 'borderBottomRightRadius', 'borderBottomLeftRadius',
+      'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing',
+      'textAlign', 'verticalAlign', 'textTransform',
+      'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+      'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+      'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
+      'display', 'flexDirection', 'justifyContent', 'alignItems', 'flexWrap', 'flex', 'gap',
+      'gridTemplateColumns', 'gridTemplateRows',
+      'boxSizing', 'overflow'
+    ];
 
-    if (bg && !bg.includes('oklch') && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
-      target.style.backgroundColor = bg;
+    for (const prop of propsToCopy) {
+      const val = (computed as any)[prop];
+      if (val) {
+        const sanitized = sanitizeStyleValue(val);
+        (target.style as any)[prop] = sanitized;
+      }
     }
-    if (color && !color.includes('oklch')) {
-      target.style.color = color;
-    }
-    if (fontSize) target.style.fontSize = fontSize;
-    if (fontWeight) target.style.fontWeight = fontWeight;
-    if (textAlign) target.style.textAlign = textAlign;
-    if (borderTop && !borderTop.includes('oklch')) target.style.borderTop = borderTop;
-    if (borderRight && !borderRight.includes('oklch')) target.style.borderRight = borderRight;
-    if (borderBottom && !borderBottom.includes('oklch')) target.style.borderBottom = borderBottom;
-    if (borderLeft && !borderLeft.includes('oklch')) target.style.borderLeft = borderLeft;
 
-    target.style.paddingTop = paddingTop;
-    target.style.paddingRight = paddingRight;
-    target.style.paddingBottom = paddingBottom;
-    target.style.paddingLeft = paddingLeft;
-    target.style.width = width;
+    let bg = computed.backgroundColor;
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      target.style.backgroundColor = sanitizeStyleValue(bg);
+    }
+    let col = computed.color;
+    if (col) {
+      target.style.color = sanitizeStyleValue(col);
+    }
+
     target.style.boxSizing = 'border-box';
+    target.style.opacity = '1';
+    target.style.visibility = 'visible';
   } catch (err) {
     // ignore
   }
@@ -56,6 +105,13 @@ function applyComputedStyles(source: HTMLElement, target: HTMLElement): void {
 function createPristineInlineElement(sourceElement: HTMLElement): HTMLElement {
   const clone = sourceElement.cloneNode(true) as HTMLElement;
   
+  clone.style.opacity = '1';
+  clone.style.visibility = 'visible';
+  clone.style.display = 'block';
+  clone.style.backgroundColor = '#ffffff';
+  clone.style.width = '210mm';
+  clone.style.height = 'auto';
+
   const sourceNodes = sourceElement.querySelectorAll('*');
   const cloneNodes = clone.querySelectorAll('*');
 
@@ -64,9 +120,10 @@ function createPristineInlineElement(sourceElement: HTMLElement): HTMLElement {
   const count = Math.min(sourceNodes.length, cloneNodes.length);
   for (let i = 0; i < count; i++) {
     applyComputedStyles(sourceNodes[i] as HTMLElement, cloneNodes[i] as HTMLElement);
+    (cloneNodes[i] as HTMLElement).style.opacity = '1';
+    (cloneNodes[i] as HTMLElement).style.visibility = 'visible';
   }
 
-  // Also convert canvas elements to image data URLs
   const sourceCanvases = sourceElement.querySelectorAll('canvas');
   const cloneCanvases = clone.querySelectorAll('canvas');
   for (let i = 0; i < Math.min(sourceCanvases.length, cloneCanvases.length); i++) {
@@ -141,6 +198,14 @@ export async function generatePdfBlobForDocument(
       allowTaint: true,
       logging: false,
       letterRendering: true,
+      onclone: (clonedDoc: Document) => {
+        const styleEls = clonedDoc.querySelectorAll('style');
+        styleEls.forEach((st) => {
+          if (st.textContent && st.textContent.includes('oklch')) {
+            st.textContent = st.textContent.replace(/oklch\([^)]+\)/gi, 'rgb(0,0,0)');
+          }
+        });
+      },
     },
     jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
   };
@@ -239,6 +304,14 @@ export async function downloadDanfePdf(
         allowTaint: true,
         logging: false,
         letterRendering: true,
+        onclone: (clonedDoc: Document) => {
+          const styleEls = clonedDoc.querySelectorAll('style');
+          styleEls.forEach((st) => {
+            if (st.textContent && st.textContent.includes('oklch')) {
+              st.textContent = st.textContent.replace(/oklch\([^)]+\)/gi, 'rgb(0,0,0)');
+            }
+          });
+        },
       },
       jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
     };
