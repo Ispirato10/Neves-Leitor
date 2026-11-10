@@ -82,7 +82,53 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
   };
 
   const handlePrint = () => {
-    window.print();
+    const existingElement = document.getElementById('danfe-native-preview-element');
+    if (!existingElement) {
+      window.print();
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const stylesheets = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+      .map((node) => node.outerHTML)
+      .join('\n');
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>DANFE - Nota Nº ${doc.numero}</title>
+          ${stylesheets}
+          <style>
+            body { background: #ffffff !important; color: #000000 !important; margin: 0; padding: 0; }
+            @page { size: A4 portrait; margin: 0; }
+            .danfe-page-sheet { break-after: page; page-break-after: always; margin: 0 auto; background: #fff; box-sizing: border-box; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          </style>
+        </head>
+        <body class="bg-white text-black font-sans">
+          <div style="display: flex; flex-direction: column; align-items: center;">
+            ${existingElement.innerHTML}
+          </div>
+          <script>
+            window.onload = () => {
+              setTimeout(() => {
+                window.print();
+                window.close();
+              }, 600);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
   };
 
   const handleCopyXml = () => {

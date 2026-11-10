@@ -86,8 +86,9 @@ export async function captureCanvasFromElement(element: HTMLElement): Promise<HT
   element.style.width = '210mm';
 
   const canvas = await html2canvas(element, {
-    scale: 2.2,
+    scale: 2.5,
     useCORS: true,
+    allowTaint: true,
     logging: false,
     backgroundColor: '#ffffff',
     windowWidth: 1240,
@@ -96,6 +97,22 @@ export async function captureCanvasFromElement(element: HTMLElement): Promise<HT
     imageTimeout: 0,
     onclone: (clonedDoc: Document) => {
       sanitizeOklchInDocument(clonedDoc);
+      // Convert all canvas elements in clone to data URL images to prevent taint/security errors
+      const canvases = clonedDoc.querySelectorAll('canvas');
+      canvases.forEach((origCanvas) => {
+        try {
+          const dataUrl = origCanvas.toDataURL('image/png');
+          const img = clonedDoc.createElement('img');
+          img.src = dataUrl;
+          img.style.width = `${origCanvas.width}px`;
+          img.style.height = `${origCanvas.height}px`;
+          img.style.display = 'block';
+          img.className = origCanvas.className;
+          origCanvas.parentNode?.replaceChild(img, origCanvas);
+        } catch (e) {
+          // ignore
+        }
+      });
     },
   });
 
@@ -112,17 +129,15 @@ export async function generatePdfBlobForDocument(
   const existingElement = document.getElementById('danfe-native-preview-element');
   const zoomWrapper = document.getElementById('danfe-zoom-wrapper');
 
-  let canvas: HTMLCanvasElement;
+  let targetContainer: HTMLElement;
+  let isTemp = false;
+  let tempContainer: HTMLDivElement | null = null;
+  let root: any = null;
 
   if (existingElement) {
-    const originalTransform = zoomWrapper ? zoomWrapper.style.transform : '';
-    if (zoomWrapper) zoomWrapper.style.transform = 'none';
-
-    canvas = await captureCanvasFromElement(existingElement as HTMLElement);
-
-    if (zoomWrapper) zoomWrapper.style.transform = originalTransform;
+    targetContainer = existingElement;
   } else {
-    const tempContainer = document.createElement('div');
+    tempContainer = document.createElement('div');
     tempContainer.id = `temp-danfe-mount-${Date.now()}`;
     tempContainer.style.position = 'fixed';
     tempContainer.style.left = '0';
@@ -134,7 +149,7 @@ export async function generatePdfBlobForDocument(
     tempContainer.style.backgroundColor = '#ffffff';
     document.body.appendChild(tempContainer);
 
-    const root = createRoot(tempContainer);
+    root = createRoot(tempContainer);
     root.render(
       React.createElement(DanfeView, {
         doc,
@@ -149,16 +164,15 @@ export async function generatePdfBlobForDocument(
       })
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    const innerElement = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
-    canvas = await captureCanvasFromElement(innerElement as HTMLElement);
-
-    root.unmount();
-    document.body.removeChild(tempContainer);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    targetContainer = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
+    isTemp = true;
   }
 
-  const imgData = canvas.toDataURL('image/jpeg', 0.98);
+  const originalTransform = zoomWrapper ? zoomWrapper.style.transform : '';
+  if (zoomWrapper) zoomWrapper.style.transform = 'none';
+
+  const pageSheets = Array.from(targetContainer.querySelectorAll('.danfe-page-sheet')) as HTMLElement[];
 
   const pdf = new jsPDF({
     orientation: 'portrait',
@@ -167,22 +181,27 @@ export async function generatePdfBlobForDocument(
     compress: true,
   });
 
-  const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
-  const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
-  const imgWidth = pdfWidth;
-  const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+  const pdfWidth = 210;
+  const pdfHeight = 297;
 
-  let heightLeft = imgHeight;
-  let position = 0;
+  if (pageSheets.length > 0) {
+    for (let i = 0; i < pageSheets.length; i++) {
+      if (i > 0) pdf.addPage('a4', 'portrait');
+      const pageCanvas = await captureCanvasFromElement(pageSheets[i]);
+      const imgData = pageCanvas.toDataURL('image/png');
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+    }
+  } else {
+    const canvas = await captureCanvasFromElement(targetContainer);
+    const imgData = canvas.toDataURL('image/png');
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+  }
 
-  pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-  heightLeft -= pdfHeight;
+  if (zoomWrapper) zoomWrapper.style.transform = originalTransform;
 
-  while (heightLeft >= 3) {
-    position = heightLeft - imgHeight;
-    pdf.addPage();
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-    heightLeft -= pdfHeight;
+  if (isTemp && root && tempContainer) {
+    root.unmount();
+    document.body.removeChild(tempContainer);
   }
 
   return pdf.output('blob');
@@ -295,7 +314,7 @@ export function exportDocsToCsv(docs: FiscalDocument[]): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `Relatorio_Notas_Fiscais_${new Date().toISOString().slice(0, 10)}.zip` || `Relatorio_Notas_Fiscais_${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `Relatorio_Notas_Fiscais_${new Date().toISOString().slice(0, 10)}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
