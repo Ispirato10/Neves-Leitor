@@ -5,6 +5,10 @@ import React from 'react';
 import { FiscalDocument, DanfeCustomization } from '../types/nfe';
 import { DanfeView } from '../components/DanfeView';
 
+const getHtml2Pdf = () => {
+  return (html2pdf as any).default || html2pdf;
+};
+
 export async function generatePdfBlobForDocument(
   doc: FiscalDocument,
   customization?: DanfeCustomization
@@ -41,7 +45,7 @@ export async function generatePdfBlobForDocument(
       })
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 400));
     targetEl = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
   }
 
@@ -58,18 +62,31 @@ export async function generatePdfBlobForDocument(
     jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
   };
 
-  const pdfBlob = await html2pdf().from(targetEl).set(opt).outputPdf('blob');
+  try {
+    const worker = getHtml2Pdf();
+    const pdfBlob = await worker().from(targetEl).set(opt).outputPdf('blob');
 
-  if (root && tempContainer) {
-    try {
-      root.unmount();
-    } catch (e) {}
-    document.body.removeChild(tempContainer);
-  } else if (tempContainer) {
-    document.body.removeChild(tempContainer);
+    if (root && tempContainer) {
+      try {
+        root.unmount();
+      } catch (e) {}
+      document.body.removeChild(tempContainer);
+    } else if (tempContainer) {
+      document.body.removeChild(tempContainer);
+    }
+
+    return pdfBlob;
+  } catch (err) {
+    if (root && tempContainer) {
+      try {
+        root.unmount();
+      } catch (e) {}
+      document.body.removeChild(tempContainer);
+    } else if (tempContainer) {
+      document.body.removeChild(tempContainer);
+    }
+    throw err;
   }
-
-  return pdfBlob;
 }
 
 export async function downloadDanfePdf(
@@ -110,7 +127,7 @@ export async function downloadDanfePdf(
         })
       );
 
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      await new Promise((resolve) => setTimeout(resolve, 400));
       targetEl = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
     }
 
@@ -132,7 +149,8 @@ export async function downloadDanfePdf(
       jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
     };
 
-    await html2pdf().from(targetEl).set(opt).save();
+    const worker = getHtml2Pdf();
+    await worker().from(targetEl).set(opt).save();
 
     if (root && tempContainer) {
       try {
@@ -142,9 +160,9 @@ export async function downloadDanfePdf(
     } else if (tempContainer) {
       document.body.removeChild(tempContainer);
     }
-  } catch (error) {
-    console.error('Erro ao baixar PDF da DANFE com html2pdf:', error);
-    alert('Ocorreu uma falha ao gerar o PDF. Por favor tente novamente.');
+  } catch (error: any) {
+    console.error('Erro detalhado ao baixar PDF da DANFE com html2pdf:', error);
+    alert(`Ocorreu uma falha ao gerar o PDF: ${error?.message || error}`);
   }
 }
 
