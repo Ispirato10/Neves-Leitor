@@ -93,12 +93,79 @@ export async function generatePdfBlobForDocument(
   doc: FiscalDocument,
   customization?: DanfeCustomization
 ): Promise<Blob> {
-  const existingElement = document.getElementById('danfe-native-preview-element');
-  let targetEl = existingElement;
+  const tempContainer = document.createElement('div');
+  tempContainer.style.position = 'fixed';
+  tempContainer.style.left = '0';
+  tempContainer.style.top = '0';
+  tempContainer.style.width = '210mm';
+  tempContainer.style.opacity = '0';
+  tempContainer.style.pointerEvents = 'none';
+  tempContainer.style.zIndex = '-9999';
+  tempContainer.style.backgroundColor = '#ffffff';
+  document.body.appendChild(tempContainer);
+
+  const root = createRoot(tempContainer);
+  root.render(
+    React.createElement(DanfeView, {
+      doc,
+      customization: customization || {
+        showCanhoto: true,
+        canhotoPosition: 'top',
+        compactMode: false,
+        showIBPT: true,
+        fontSize: 'sm',
+      },
+      idToTarget: `pdf-blob-target-${doc.id}`,
+    })
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const targetEl = document.getElementById(`pdf-blob-target-${doc.id}`) || tempContainer;
+
+  const opt = {
+    margin: 0,
+    image: { type: 'jpeg' as const, quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      letterRendering: true,
+      onclone: (clonedDoc: Document) => {
+        sanitizeOklchInDocument(clonedDoc);
+      },
+    },
+    jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
+  };
+
+  try {
+    const worker = getHtml2Pdf();
+    const pdfBlob = await worker().from(targetEl).set(opt).outputPdf('blob');
+
+    try {
+      root.unmount();
+    } catch (e) {}
+    document.body.removeChild(tempContainer);
+
+    return pdfBlob;
+  } catch (err) {
+    try {
+      root.unmount();
+    } catch (e) {}
+    document.body.removeChild(tempContainer);
+    throw err;
+  }
+}
+
+export async function downloadDanfePdf(
+  doc: FiscalDocument,
+  elementId?: string,
+  customization?: DanfeCustomization
+): Promise<void> {
   let tempContainer: HTMLElement | null = null;
   let root: any = null;
 
-  if (!targetEl) {
+  try {
     tempContainer = document.createElement('div');
     tempContainer.style.position = 'fixed';
     tempContainer.style.left = '0';
@@ -121,98 +188,12 @@ export async function generatePdfBlobForDocument(
           showIBPT: true,
           fontSize: 'sm',
         },
-        idToTarget: `temp-danfe-inner-${doc.id}`,
+        idToTarget: `pdf-download-target-${doc.id}`,
       })
     );
 
     await new Promise((resolve) => setTimeout(resolve, 400));
-    targetEl = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
-  }
-
-  const opt = {
-    margin: 0,
-    image: { type: 'jpeg' as const, quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      letterRendering: true,
-      onclone: (clonedDoc: Document) => {
-        sanitizeOklchInDocument(clonedDoc);
-      },
-    },
-    jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
-  };
-
-  try {
-    const worker = getHtml2Pdf();
-    const pdfBlob = await worker().from(targetEl).set(opt).outputPdf('blob');
-
-    if (root && tempContainer) {
-      try {
-        root.unmount();
-      } catch (e) {}
-      document.body.removeChild(tempContainer);
-    } else if (tempContainer) {
-      document.body.removeChild(tempContainer);
-    }
-
-    return pdfBlob;
-  } catch (err) {
-    if (root && tempContainer) {
-      try {
-        root.unmount();
-      } catch (e) {}
-      document.body.removeChild(tempContainer);
-    } else if (tempContainer) {
-      document.body.removeChild(tempContainer);
-    }
-    throw err;
-  }
-}
-
-export async function downloadDanfePdf(
-  doc: FiscalDocument,
-  elementId?: string,
-  customization?: DanfeCustomization
-): Promise<void> {
-  try {
-    const existingElement = document.getElementById('danfe-native-preview-element');
-    let targetEl = existingElement;
-    let tempContainer: HTMLElement | null = null;
-    let root: any = null;
-
-    if (!targetEl) {
-      tempContainer = document.createElement('div');
-      tempContainer.style.position = 'fixed';
-      tempContainer.style.left = '0';
-      tempContainer.style.top = '0';
-      tempContainer.style.width = '210mm';
-      tempContainer.style.opacity = '0';
-      tempContainer.style.pointerEvents = 'none';
-      tempContainer.style.zIndex = '-9999';
-      tempContainer.style.backgroundColor = '#ffffff';
-      document.body.appendChild(tempContainer);
-
-      root = createRoot(tempContainer);
-      root.render(
-        React.createElement(DanfeView, {
-          doc,
-          customization: customization || {
-            showCanhoto: true,
-            canhotoPosition: 'top',
-            compactMode: false,
-            showIBPT: true,
-            fontSize: 'sm',
-          },
-          idToTarget: `temp-danfe-inner-${doc.id}`,
-        })
-      );
-
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      targetEl = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
-    }
+    const targetEl = document.getElementById(`pdf-download-target-${doc.id}`) || tempContainer;
 
     const cleanChave = doc.chave.replace(/\D/g, '');
     const cleanNumero = doc.numero.replace(/\D/g, '') || '0';
@@ -238,15 +219,21 @@ export async function downloadDanfePdf(
     const worker = getHtml2Pdf();
     await worker().from(targetEl).set(opt).save();
 
-    if (root && tempContainer) {
-      try {
-        root.unmount();
-      } catch (e) {}
-      document.body.removeChild(tempContainer);
-    } else if (tempContainer) {
+    try {
+      root.unmount();
+    } catch (e) {}
+    if (tempContainer) {
       document.body.removeChild(tempContainer);
     }
   } catch (error: any) {
+    if (root) {
+      try {
+        root.unmount();
+      } catch (e) {}
+    }
+    if (tempContainer && tempContainer.parentNode) {
+      document.body.removeChild(tempContainer);
+    }
     console.error('Erro detalhado ao baixar PDF da DANFE com html2pdf:', error);
     alert(`Ocorreu uma falha ao gerar o PDF: ${error?.message || error}`);
   }
