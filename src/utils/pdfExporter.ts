@@ -85,8 +85,12 @@ export async function captureCanvasFromElement(element: HTMLElement): Promise<HT
   element.style.transform = 'none';
   element.style.width = '210mm';
 
+  // Adaptive scale to prevent canvas memory limit crashes on mobile browsers or restricted environments
+  const isMobileDevice = window.innerWidth < 768 || /Mobi|Android|iPhone/i.test(navigator.userAgent);
+  const renderScale = isMobileDevice ? 1.5 : 2.0;
+
   const canvas = await html2canvas(element, {
-    scale: 2.5,
+    scale: renderScale,
     useCORS: true,
     allowTaint: true,
     logging: false,
