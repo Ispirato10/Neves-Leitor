@@ -89,18 +89,52 @@ export const XmlListTable: React.FC<XmlListTableProps> = ({
   };
 
   const filterOptions = [
-    { id: 'all', label: 'Todas', count: documents.length },
-    { id: 'NFE', label: 'NF-e (55)', count: documents.filter(d => d.docType === 'NFE').length },
-    { id: 'NFCE', label: 'NFC-e (65)', count: documents.filter(d => d.docType === 'NFCE').length },
-    { id: 'CTE', label: 'CT-e (57)', count: documents.filter(d => d.docType === 'CTE').length },
+    { id: 'all', label: 'Todas', shortLabel: 'Todas', count: documents.length },
+    { id: 'NFE', label: 'NF-e (55)', shortLabel: 'NF-e', count: documents.filter(d => d.docType === 'NFE').length },
+    { id: 'NFCE', label: 'NFC-e (65)', shortLabel: 'NFC-e', count: documents.filter(d => d.docType === 'NFCE').length },
+    { id: 'CTE', label: 'CT-e (57)', shortLabel: 'CT-e', count: documents.filter(d => d.docType === 'CTE').length },
   ];
 
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
       {/* HEADER CONTROLS & ANIMATED FILTER TABS */}
-      <div className="p-4 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/70">
-        {/* INTERACTIVE ANIMATED SLIDING FILTER TABS */}
-        <div className="flex items-center gap-1 p-1 bg-slate-200/70 rounded-xl shrink-0">
+      <div className="p-3 sm:p-4 border-b border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50/70">
+        {/* MOBILE SEGMENTED CONTROL TABS (< sm) */}
+        <div className="sm:hidden grid grid-cols-4 gap-1 p-1 bg-slate-200/80 rounded-xl w-full text-center">
+          {filterOptions.map((option) => {
+            const isActive = activeFilter === option.id;
+            return (
+              <button
+                key={option.id}
+                onClick={() => setActiveFilter(option.id)}
+                className={`relative py-2 px-1 text-[11px] font-extrabold rounded-lg transition-colors cursor-pointer text-center z-10 flex flex-col items-center justify-center gap-0.5 ${
+                  isActive ? 'text-blue-900 font-black' : 'text-slate-600'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeFilterPillMobile"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                    className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
+                  />
+                )}
+                <div className="flex items-center gap-1">
+                  <span>{option.shortLabel}</span>
+                  {option.count > 0 && (
+                    <span className={`text-[9px] px-1 rounded-full font-mono font-bold ${
+                      isActive ? 'bg-blue-100 text-blue-800' : 'bg-slate-300/80 text-slate-700'
+                    }`}>
+                      {option.count}
+                    </span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* DESKTOP ANIMATED SLIDING FILTER TABS (>= sm) */}
+        <div className="hidden sm:flex items-center gap-1 p-1 bg-slate-200/70 rounded-xl shrink-0">
           {filterOptions.map((option) => {
             const isActive = activeFilter === option.id;
             return (
@@ -113,7 +147,7 @@ export const XmlListTable: React.FC<XmlListTableProps> = ({
               >
                 {isActive && (
                   <motion.div
-                    layoutId="activeFilterPill"
+                    layoutId="activeFilterPillDesktop"
                     transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     className="absolute inset-0 bg-white rounded-lg shadow-xs -z-10"
                   />
@@ -127,57 +161,56 @@ export const XmlListTable: React.FC<XmlListTableProps> = ({
           })}
         </div>
 
-        {/* SEARCH BAR */}
-        <div className="relative flex-1 max-w-xs">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por Chave, Emitente, CNPJ, Nº..."
-            className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          />
-        </div>
+        {/* SEARCH BAR & BATCH ACTIONS ROW */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1 max-w-full md:max-w-xl">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por Chave, Emitente, CNPJ, Nº..."
+              className="w-full pl-9 pr-3 py-2 sm:py-1.5 text-xs border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            />
+          </div>
 
-        {/* BATCH ACTION BUTTONS */}
-        <div className="flex items-center gap-2 shrink-0">
-          {selectedIds.length > 0 && (
+          <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+            {selectedIds.length > 0 && (
+              <motion.button
+                whileTap={{ scale: 0.95 }}
+                onClick={handleBatchZip}
+                disabled={isZipping}
+                className="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 text-xs font-extrabold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/20 cursor-pointer disabled:opacity-50"
+              >
+                <Archive className="w-3.5 h-3.5" />
+                <span>
+                  {isZipping
+                    ? `ZIP (${zipProgress.current}/${zipProgress.total})...`
+                    : `Baixar (${selectedIds.length}) ZIP`}
+                </span>
+              </motion.button>
+            )}
+
             <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleBatchZip}
-              disabled={isZipping}
-              className="px-3.5 py-1.5 text-xs font-extrabold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm shadow-blue-500/20 cursor-pointer disabled:opacity-50"
+              whileTap={{ scale: 0.95 }}
+              onClick={handleExportCsv}
+              className="px-3 py-2 sm:py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
             >
-              <Archive className="w-3.5 h-3.5" />
-              <span>
-                {isZipping
-                  ? `Gerando ZIP (${zipProgress.current}/${zipProgress.total})...`
-                  : `Baixar (${selectedIds.length}) PDFs em ZIP`}
-              </span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Excel/CSV</span>
             </motion.button>
-          )}
 
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
-            onClick={handleExportCsv}
-            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Exportar Excel/CSV</span>
-          </motion.button>
-
-          {documents.length > 0 && (
-            <button
-              onClick={onClearAll}
-              className="px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
-              title="Limpar todas as notas"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Limpar</span>
-            </button>
-          )}
+            {documents.length > 0 && (
+              <button
+                onClick={onClearAll}
+                className="px-2.5 py-2 sm:py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                title="Limpar todas as notas"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Limpar</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

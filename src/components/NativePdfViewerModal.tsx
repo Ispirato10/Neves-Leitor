@@ -92,9 +92,9 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
   };
 
   const tabs = [
-    { id: 'danfe', label: 'DANFE A4 Original' },
-    { id: 'interactive', label: 'Detalhamento Fiscal' },
-    { id: 'xml', label: 'Código XML' },
+    { id: 'danfe', label: 'DANFE A4 Original', shortLabel: 'DANFE A4' },
+    { id: 'interactive', label: 'Detalhamento Fiscal', shortLabel: 'Detalhes' },
+    { id: 'xml', label: 'Código XML', shortLabel: 'XML' },
   ];
 
   return (
@@ -108,47 +108,49 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
       >
         {/* TOP CONTROL BAR */}
         <div className="bg-slate-900 text-white px-3 sm:px-6 py-2.5 flex items-center justify-between border-b border-slate-800 shrink-0 gap-2">
-          {/* DOCUMENT TITLE & MODELO */}
+          {/* LEFT: PROMINENT VOLTAR (BACK) BUTTON & DOCUMENT TITLE */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={onClose}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs rounded-xl transition-colors cursor-pointer border border-slate-700/80 shadow-xs"
+              title="Voltar para a Lista de Notas"
+            >
+              <ChevronLeft className="w-4 h-4 text-blue-400" />
+              <span>Voltar</span>
+            </button>
+
             {hasPrev && (
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+              <button
                 onClick={onPrevDoc}
-                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer hidden sm:block"
                 title="Nota Anterior"
               >
-                <ChevronLeft className="w-5 h-5" />
-              </motion.button>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
             )}
 
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white flex items-center gap-1">
-                  <FileCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span className="truncate max-w-[140px] sm:max-w-none">
-                    Nota A4 Nº {doc.numero}
-                  </span>
+            <div className="truncate max-w-[120px] sm:max-w-xs">
+              <div className="flex items-center gap-1">
+                <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white truncate">
+                  Nº {doc.numero}
                 </span>
-                <span className="text-[10px] sm:text-xs font-bold px-1.5 py-0.5 rounded bg-blue-600 text-white font-mono shrink-0">
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-600 text-white font-mono shrink-0">
                   {doc.docType}
                 </span>
               </div>
-              <p className="text-[10px] sm:text-xs text-slate-400 truncate max-w-[180px] sm:max-w-xs">
+              <p className="text-[10px] text-slate-400 truncate hidden sm:block">
                 {doc.emitente.xNome}
               </p>
             </div>
 
             {hasNext && (
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
+              <button
                 onClick={onNextDoc}
-                className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer hidden sm:block"
                 title="Próxima Nota"
               >
-                <ChevronRight className="w-5 h-5" />
-              </motion.button>
+                <ChevronRight className="w-4 h-4" />
+              </button>
             )}
           </div>
 
@@ -177,47 +179,43 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
             })}
           </div>
 
-          {/* PRIMARY ACTIONS */}
-          <div className="flex items-center gap-1.5">
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => {
-                onClose();
-                onOpenUploadNew();
-              }}
-              className="px-3 py-1.5 text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-all flex items-center gap-1 shadow-sm shadow-blue-500/20 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 text-blue-200" />
-              <span className="hidden sm:inline">+ Inserir Outro XML</span>
-              <span className="sm:hidden">+ XML</span>
-            </motion.button>
+          {/* RIGHT: DESKTOP ACTIONS & CLOSE X */}
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2">
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenUploadNew();
+                }}
+                className="px-3 py-1.5 text-xs font-extrabold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-all flex items-center gap-1 shadow-sm shadow-blue-500/20 cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4 text-blue-200" />
+                <span>+ Inserir Outro XML</span>
+              </button>
 
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={handlePrint}
-              className="px-3 py-1.5 text-xs font-extrabold text-slate-200 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-xl transition-all flex items-center gap-1 cursor-pointer border border-slate-700"
-              title="Imprimir / Salvar como PDF Vatorial Nativo do Navegador"
-            >
-              <Printer className="w-4 h-4 text-slate-300" />
-              <span className="hidden sm:inline">Imprimir / PDF Nativo</span>
-            </motion.button>
+              <button
+                onClick={handlePrint}
+                className="px-3 py-1.5 text-xs font-extrabold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition-all flex items-center gap-1 cursor-pointer border border-slate-700"
+                title="Imprimir / Salvar como PDF Nativo"
+              >
+                <Printer className="w-4 h-4 text-slate-300" />
+                <span>Imprimir / PDF</span>
+              </button>
 
-            <motion.button
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={handleDirectDownload}
-              disabled={isDownloading}
-              className="px-3 py-1.5 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all flex items-center gap-1 shadow-sm shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
-            >
-              <Download className="w-4 h-4" />
-              <span className="hidden md:inline">{isDownloading ? 'Gerando...' : 'Baixar PDF'}</span>
-            </motion.button>
+              <button
+                onClick={handleDirectDownload}
+                disabled={isDownloading}
+                className="px-3 py-1.5 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all flex items-center gap-1 shadow-sm shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                <span>{isDownloading ? 'Gerando...' : 'Baixar PDF'}</span>
+              </button>
+            </div>
 
             <button
               onClick={onClose}
-              className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer ml-1"
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              title="Fechar Visualizador"
             >
               <X className="w-6 h-6" />
             </button>
@@ -225,16 +223,16 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
         </div>
 
         {/* MOBILE TAB SELECTOR */}
-        <div className="md:hidden bg-slate-900 border-b border-slate-800 px-3 py-1.5 flex items-center justify-around text-xs font-bold">
+        <div className="md:hidden bg-slate-900 border-b border-slate-800 p-1.5 grid grid-cols-3 gap-1 text-center font-bold">
           {tabs.map((t) => (
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id as any)}
-              className={`px-3 py-1 rounded-lg cursor-pointer transition-colors ${
-                activeTab === t.id ? 'bg-blue-600 text-white' : 'text-slate-400'
+              className={`py-1.5 px-1 rounded-lg cursor-pointer transition-colors text-[11px] font-extrabold ${
+                activeTab === t.id ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
               }`}
             >
-              {t.label}
+              {t.shortLabel}
             </button>
           ))}
         </div>
