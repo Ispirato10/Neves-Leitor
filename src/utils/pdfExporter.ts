@@ -9,6 +9,86 @@ const getHtml2Pdf = () => {
   return (html2pdf as any).default || html2pdf;
 };
 
+function convertOklchToRgb(match: string): string {
+  try {
+    const inner = match.replace(/^oklch\(/i, '').replace(/\)$/, '').trim();
+    const parts = inner.split(/[\s/]+/);
+    const lightnessStr = parts[0] || '0.5';
+    let lightness = 0.5;
+    if (lightnessStr.endsWith('%')) {
+      lightness = parseFloat(lightnessStr) / 100;
+    } else {
+      lightness = parseFloat(lightnessStr);
+    }
+
+    if (isNaN(lightness)) lightness = 0.5;
+
+    let r = 0, g = 0, b = 0;
+    if (lightness >= 0.95) {
+      r = 248; g = 250; b = 252; // #f8fafc
+    } else if (lightness >= 0.88) {
+      r = 241; g = 245; b = 249; // #f1f5f9
+    } else if (lightness >= 0.80) {
+      r = 226; g = 232; b = 240; // #e2e8f0
+    } else if (lightness >= 0.65) {
+      r = 203; g = 213; b = 225; // #cbd5e1
+    } else if (lightness >= 0.45) {
+      r = 100; g = 116; b = 139; // #64748b
+    } else if (lightness >= 0.25) {
+      r = 51; g = 65; b = 85; // #334155
+    } else {
+      r = 15; g = 23; b = 42; // #0f172a
+    }
+
+    return `rgb(${r}, ${g}, ${b})`;
+  } catch {
+    return 'rgb(0, 0, 0)';
+  }
+}
+
+function sanitizeOklchInDocument(clonedDoc: Document): void {
+  try {
+    const styleElements = clonedDoc.querySelectorAll('style');
+    styleElements.forEach((styleEl) => {
+      if (styleEl.textContent && styleEl.textContent.includes('oklch')) {
+        styleEl.textContent = styleEl.textContent.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
+      }
+    });
+
+    try {
+      const sheets = clonedDoc.styleSheets;
+      for (let i = 0; i < sheets.length; i++) {
+        try {
+          const rules = sheets[i].cssRules;
+          for (let j = 0; j < rules.length; j++) {
+            const ruleText = rules[j].cssText;
+            if (ruleText && ruleText.includes('oklch')) {
+              if (ruleText.includes('--tw-') || ruleText.includes(':root')) {
+                (sheets[i] as any).deleteRule(j);
+                j--;
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    } catch (e) {}
+
+    const allNodes = clonedDoc.querySelectorAll('*');
+    allNodes.forEach((node) => {
+      const el = node as HTMLElement;
+      if (el.getAttribute) {
+        const inlineStyle = el.getAttribute('style');
+        if (inlineStyle && inlineStyle.includes('oklch')) {
+          const cleaned = inlineStyle.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
+          el.setAttribute('style', cleaned);
+        }
+      }
+    });
+  } catch (err) {
+    console.warn('Warning during oklch CSS sanitization:', err);
+  }
+}
+
 export async function generatePdfBlobForDocument(
   doc: FiscalDocument,
   customization?: DanfeCustomization
@@ -58,6 +138,9 @@ export async function generatePdfBlobForDocument(
       allowTaint: true,
       logging: false,
       letterRendering: true,
+      onclone: (clonedDoc: Document) => {
+        sanitizeOklchInDocument(clonedDoc);
+      },
     },
     jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
   };
@@ -145,6 +228,9 @@ export async function downloadDanfePdf(
         allowTaint: true,
         logging: false,
         letterRendering: true,
+        onclone: (clonedDoc: Document) => {
+          sanitizeOklchInDocument(clonedDoc);
+        },
       },
       jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
     };
