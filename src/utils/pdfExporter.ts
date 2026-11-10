@@ -9,163 +9,92 @@ const getHtml2Pdf = () => {
   return (html2pdf as any).default || html2pdf;
 };
 
-function convertOklchToRgb(match: string): string {
+function applyComputedStyles(source: HTMLElement, target: HTMLElement): void {
   try {
-    const inner = match.replace(/^oklch\(/i, '').replace(/\)$/, '').trim();
-    const parts = inner.split(/[\s/]+/);
-    const lightnessStr = parts[0] || '0.5';
-    let lightness = 0.5;
-    if (lightnessStr.endsWith('%')) {
-      lightness = parseFloat(lightnessStr) / 100;
-    } else {
-      lightness = parseFloat(lightnessStr);
+    const computed = window.getComputedStyle(source);
+    
+    const bg = computed.backgroundColor;
+    const color = computed.color;
+    const fontSize = computed.fontSize;
+    const fontWeight = computed.fontWeight;
+    const textAlign = computed.textAlign;
+    const borderTop = computed.borderTop;
+    const borderRight = computed.borderRight;
+    const borderBottom = computed.borderBottom;
+    const borderLeft = computed.borderLeft;
+    const paddingTop = computed.paddingTop;
+    const paddingRight = computed.paddingRight;
+    const paddingBottom = computed.paddingBottom;
+    const paddingLeft = computed.paddingLeft;
+    const width = computed.width;
+
+    if (bg && !bg.includes('oklch') && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
+      target.style.backgroundColor = bg;
     }
-
-    if (isNaN(lightness)) lightness = 0.5;
-
-    let r = 0, g = 0, b = 0;
-    if (lightness >= 0.95) {
-      r = 248; g = 250; b = 252; // #f8fafc
-    } else if (lightness >= 0.88) {
-      r = 241; g = 245; b = 249; // #f1f5f9
-    } else if (lightness >= 0.80) {
-      r = 226; g = 232; b = 240; // #e2e8f0
-    } else if (lightness >= 0.65) {
-      r = 203; g = 213; b = 225; // #cbd5e1
-    } else if (lightness >= 0.45) {
-      r = 100; g = 116; b = 139; // #64748b
-    } else if (lightness >= 0.25) {
-      r = 51; g = 65; b = 85; // #334155
-    } else {
-      r = 15; g = 23; b = 42; // #0f172a
+    if (color && !color.includes('oklch')) {
+      target.style.color = color;
     }
+    if (fontSize) target.style.fontSize = fontSize;
+    if (fontWeight) target.style.fontWeight = fontWeight;
+    if (textAlign) target.style.textAlign = textAlign;
+    if (borderTop && !borderTop.includes('oklch')) target.style.borderTop = borderTop;
+    if (borderRight && !borderRight.includes('oklch')) target.style.borderRight = borderRight;
+    if (borderBottom && !borderBottom.includes('oklch')) target.style.borderBottom = borderBottom;
+    if (borderLeft && !borderLeft.includes('oklch')) target.style.borderLeft = borderLeft;
 
-    return `rgb(${r}, ${g}, ${b})`;
-  } catch {
-    return 'rgb(0, 0, 0)';
+    target.style.paddingTop = paddingTop;
+    target.style.paddingRight = paddingRight;
+    target.style.paddingBottom = paddingBottom;
+    target.style.paddingLeft = paddingLeft;
+    target.style.width = width;
+    target.style.boxSizing = 'border-box';
+  } catch (err) {
+    // ignore
   }
 }
 
-function sanitizeOklchInDocument(clonedDoc: Document): void {
-  try {
-    const styleElements = clonedDoc.querySelectorAll('style');
-    styleElements.forEach((styleEl) => {
-      if (styleEl.textContent && styleEl.textContent.includes('oklch')) {
-        styleEl.textContent = styleEl.textContent.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
-      }
-    });
+function createPristineInlineElement(sourceElement: HTMLElement): HTMLElement {
+  const clone = sourceElement.cloneNode(true) as HTMLElement;
+  
+  const sourceNodes = sourceElement.querySelectorAll('*');
+  const cloneNodes = clone.querySelectorAll('*');
 
-    try {
-      const sheets = clonedDoc.styleSheets;
-      for (let i = 0; i < sheets.length; i++) {
-        try {
-          const rules = sheets[i].cssRules;
-          for (let j = 0; j < rules.length; j++) {
-            const ruleText = rules[j].cssText;
-            if (ruleText && ruleText.includes('oklch')) {
-              if (ruleText.includes('--tw-') || ruleText.includes(':root')) {
-                (sheets[i] as any).deleteRule(j);
-                j--;
-              }
-            }
-          }
-        } catch (e) {}
-      }
-    } catch (e) {}
+  applyComputedStyles(sourceElement, clone);
 
-    const allNodes = clonedDoc.querySelectorAll('*');
-    allNodes.forEach((node) => {
-      const el = node as HTMLElement;
-      if (el.getAttribute) {
-        const inlineStyle = el.getAttribute('style');
-        if (inlineStyle && inlineStyle.includes('oklch')) {
-          const cleaned = inlineStyle.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
-          el.setAttribute('style', cleaned);
-        }
-      }
-    });
-  } catch (err) {
-    console.warn('Warning during oklch CSS sanitization:', err);
+  const count = Math.min(sourceNodes.length, cloneNodes.length);
+  for (let i = 0; i < count; i++) {
+    applyComputedStyles(sourceNodes[i] as HTMLElement, cloneNodes[i] as HTMLElement);
   }
+
+  // Also convert canvas elements to image data URLs
+  const sourceCanvases = sourceElement.querySelectorAll('canvas');
+  const cloneCanvases = clone.querySelectorAll('canvas');
+  for (let i = 0; i < Math.min(sourceCanvases.length, cloneCanvases.length); i++) {
+    try {
+      const dataUrl = sourceCanvases[i].toDataURL('image/png');
+      const img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.width = `${sourceCanvases[i].width}px`;
+      img.style.height = `${sourceCanvases[i].height}px`;
+      img.style.display = 'block';
+      img.className = sourceCanvases[i].className;
+      cloneCanvases[i].parentNode?.replaceChild(img, cloneCanvases[i]);
+    } catch (e) {}
+  }
+
+  return clone;
 }
 
 export async function generatePdfBlobForDocument(
   doc: FiscalDocument,
   customization?: DanfeCustomization
 ): Promise<Blob> {
-  const tempContainer = document.createElement('div');
-  tempContainer.style.position = 'fixed';
-  tempContainer.style.left = '0';
-  tempContainer.style.top = '0';
-  tempContainer.style.width = '210mm';
-  tempContainer.style.opacity = '0';
-  tempContainer.style.pointerEvents = 'none';
-  tempContainer.style.zIndex = '-9999';
-  tempContainer.style.backgroundColor = '#ffffff';
-  document.body.appendChild(tempContainer);
-
-  const root = createRoot(tempContainer);
-  root.render(
-    React.createElement(DanfeView, {
-      doc,
-      customization: customization || {
-        showCanhoto: true,
-        canhotoPosition: 'top',
-        compactMode: false,
-        showIBPT: true,
-        fontSize: 'sm',
-      },
-      idToTarget: `pdf-blob-target-${doc.id}`,
-    })
-  );
-
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  const targetEl = document.getElementById(`pdf-blob-target-${doc.id}`) || tempContainer;
-
-  const opt = {
-    margin: 0,
-    image: { type: 'jpeg' as const, quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      letterRendering: true,
-      onclone: (clonedDoc: Document) => {
-        sanitizeOklchInDocument(clonedDoc);
-      },
-    },
-    jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
-  };
-
-  try {
-    const worker = getHtml2Pdf();
-    const pdfBlob = await worker().from(targetEl).set(opt).outputPdf('blob');
-
-    try {
-      root.unmount();
-    } catch (e) {}
-    document.body.removeChild(tempContainer);
-
-    return pdfBlob;
-  } catch (err) {
-    try {
-      root.unmount();
-    } catch (e) {}
-    document.body.removeChild(tempContainer);
-    throw err;
-  }
-}
-
-export async function downloadDanfePdf(
-  doc: FiscalDocument,
-  elementId?: string,
-  customization?: DanfeCustomization
-): Promise<void> {
+  const existingElement = document.getElementById('danfe-native-preview-element');
+  let targetEl = existingElement;
   let tempContainer: HTMLElement | null = null;
   let root: any = null;
 
-  try {
+  if (!targetEl) {
     tempContainer = document.createElement('div');
     tempContainer.style.position = 'fixed';
     tempContainer.style.left = '0';
@@ -188,12 +117,113 @@ export async function downloadDanfePdf(
           showIBPT: true,
           fontSize: 'sm',
         },
-        idToTarget: `pdf-download-target-${doc.id}`,
+        idToTarget: `pdf-blob-target-${doc.id}`,
       })
     );
 
     await new Promise((resolve) => setTimeout(resolve, 400));
-    const targetEl = document.getElementById(`pdf-download-target-${doc.id}`) || tempContainer;
+    targetEl = document.getElementById(`pdf-blob-target-${doc.id}`) || tempContainer;
+  }
+
+  const pristineElement = createPristineInlineElement(targetEl);
+  pristineElement.style.position = 'fixed';
+  pristineElement.style.left = '-9999px';
+  pristineElement.style.top = '0';
+  pristineElement.style.width = '210mm';
+  document.body.appendChild(pristineElement);
+
+  const opt = {
+    margin: 0,
+    image: { type: 'jpeg' as const, quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      letterRendering: true,
+    },
+    jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
+  };
+
+  try {
+    const worker = getHtml2Pdf();
+    const pdfBlob = await worker().from(pristineElement).set(opt).outputPdf('blob');
+
+    document.body.removeChild(pristineElement);
+    if (root && tempContainer) {
+      try {
+        root.unmount();
+      } catch (e) {}
+      document.body.removeChild(tempContainer);
+    } else if (tempContainer) {
+      document.body.removeChild(tempContainer);
+    }
+
+    return pdfBlob;
+  } catch (err) {
+    if (pristineElement.parentNode) document.body.removeChild(pristineElement);
+    if (root && tempContainer) {
+      try {
+        root.unmount();
+      } catch (e) {}
+      document.body.removeChild(tempContainer);
+    } else if (tempContainer) {
+      document.body.removeChild(tempContainer);
+    }
+    throw err;
+  }
+}
+
+export async function downloadDanfePdf(
+  doc: FiscalDocument,
+  elementId?: string,
+  customization?: DanfeCustomization
+): Promise<void> {
+  let tempContainer: HTMLElement | null = null;
+  let root: any = null;
+  let pristineElement: HTMLElement | null = null;
+
+  try {
+    const existingElement = document.getElementById('danfe-native-preview-element');
+    let targetEl = existingElement;
+
+    if (!targetEl) {
+      tempContainer = document.createElement('div');
+      tempContainer.style.position = 'fixed';
+      tempContainer.style.left = '0';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = '210mm';
+      tempContainer.style.opacity = '0';
+      tempContainer.style.pointerEvents = 'none';
+      tempContainer.style.zIndex = '-9999';
+      tempContainer.style.backgroundColor = '#ffffff';
+      document.body.appendChild(tempContainer);
+
+      root = createRoot(tempContainer);
+      root.render(
+        React.createElement(DanfeView, {
+          doc,
+          customization: customization || {
+            showCanhoto: true,
+            canhotoPosition: 'top',
+            compactMode: false,
+            showIBPT: true,
+            fontSize: 'sm',
+          },
+          idToTarget: `pdf-download-target-${doc.id}`,
+        })
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      targetEl = document.getElementById(`pdf-download-target-${doc.id}`) || tempContainer;
+    }
+
+    pristineElement = createPristineInlineElement(targetEl);
+    pristineElement.style.position = 'fixed';
+    pristineElement.style.left = '-9999px';
+    pristineElement.style.top = '0';
+    pristineElement.style.width = '210mm';
+    document.body.appendChild(pristineElement);
 
     const cleanChave = doc.chave.replace(/\D/g, '');
     const cleanNumero = doc.numero.replace(/\D/g, '') || '0';
@@ -209,23 +239,28 @@ export async function downloadDanfePdf(
         allowTaint: true,
         logging: false,
         letterRendering: true,
-        onclone: (clonedDoc: Document) => {
-          sanitizeOklchInDocument(clonedDoc);
-        },
       },
       jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
     };
 
     const worker = getHtml2Pdf();
-    await worker().from(targetEl).set(opt).save();
+    await worker().from(pristineElement).set(opt).save();
 
-    try {
-      root.unmount();
-    } catch (e) {}
-    if (tempContainer) {
+    if (pristineElement && pristineElement.parentNode) {
+      document.body.removeChild(pristineElement);
+    }
+    if (root) {
+      try {
+        root.unmount();
+      } catch (e) {}
+    }
+    if (tempContainer && tempContainer.parentNode) {
       document.body.removeChild(tempContainer);
     }
   } catch (error: any) {
+    if (pristineElement && pristineElement.parentNode) {
+      document.body.removeChild(pristineElement);
+    }
     if (root) {
       try {
         root.unmount();

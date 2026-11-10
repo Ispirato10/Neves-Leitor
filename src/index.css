@@ -11,6 +11,16 @@
   }
 }
 
+.danfe-page-sheet {
+  word-spacing: 0.5px;
+  letter-spacing: normal;
+  text-rendering: optimizeLegibility;
+}
+
+.danfe-page-sheet span, .danfe-page-sheet p, .danfe-page-sheet div {
+  word-spacing: 0.5px;
+}
+
 @media print {
   * {
     -webkit-print-color-adjust: exact !important;
@@ -22,7 +32,6 @@
     margin: 0 !important;
     padding: 0 !important;
   }
-  /* Hide all app chrome and modal backgrounds during print */
   header, nav, footer, button, .fixed:not(:has(#danfe-native-preview-element)), .backdrop-blur-md {
     display: none !important;
   }
