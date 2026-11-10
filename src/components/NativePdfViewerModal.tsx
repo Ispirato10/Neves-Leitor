@@ -70,7 +70,7 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
 
   const handleDirectDownload = async () => {
     setIsDownloading(true);
-    await downloadDanfePdf(doc, 'danfe-native-preview-element');
+    await downloadDanfePdf(doc, undefined, customization);
     setIsDownloading(false);
   };
 
@@ -189,6 +189,17 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
             <motion.button
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.96 }}
+              onClick={handlePrint}
+              className="px-3 py-1.5 text-xs font-extrabold text-slate-200 bg-slate-800 hover:bg-slate-700 hover:text-white rounded-xl transition-all flex items-center gap-1 cursor-pointer border border-slate-700"
+              title="Imprimir / Salvar como PDF Vatorial Nativo do Navegador"
+            >
+              <Printer className="w-4 h-4 text-slate-300" />
+              <span className="hidden sm:inline">Imprimir / PDF Nativo</span>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.04 }}
+              whileTap={{ scale: 0.96 }}
               onClick={handleDirectDownload}
               disabled={isDownloading}
               className="px-3 py-1.5 text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all flex items-center gap-1 shadow-sm shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
@@ -274,6 +285,7 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
           {/* 1. DANFE PDF OFFICIAL PRINT VIEW IN EXACT A4 PAPER FORMAT */}
           {activeTab === 'danfe' && (
             <motion.div
+              id="danfe-zoom-wrapper"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: zoomScale, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 350, damping: 25 }}

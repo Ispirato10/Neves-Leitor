@@ -252,7 +252,7 @@ export default function App() {
           <XmlListTable
             documents={documents}
             onSelectDoc={(doc) => setSelectedDocId(doc.id)}
-            onDownloadSinglePdf={(doc) => downloadDanfePdf(doc, 'danfe-document-canvas')}
+            onDownloadSinglePdf={(doc) => downloadDanfePdf(doc, undefined, customization)}
             onDeleteDoc={handleDeleteDoc}
             onClearAll={handleClearAll}
           />
