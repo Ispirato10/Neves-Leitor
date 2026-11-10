@@ -1,148 +1,21 @@
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import html2pdf from 'html2pdf.js';
 import JSZip from 'jszip';
 import { createRoot } from 'react-dom/client';
 import React from 'react';
 import { FiscalDocument, DanfeCustomization } from '../types/nfe';
 import { DanfeView } from '../components/DanfeView';
 
-function convertOklchToRgb(match: string): string {
-  try {
-    const inner = match.replace(/^oklch\(/i, '').replace(/\)$/, '').trim();
-    const parts = inner.split(/[\s/]+/);
-    const lightnessStr = parts[0] || '0.5';
-    let lightness = 0.5;
-    if (lightnessStr.endsWith('%')) {
-      lightness = parseFloat(lightnessStr) / 100;
-    } else {
-      lightness = parseFloat(lightnessStr);
-    }
-
-    if (isNaN(lightness)) lightness = 0.5;
-
-    let alpha = 1;
-    if (parts.length >= 4) {
-      const alphaStr = parts[parts.length - 1];
-      if (alphaStr.endsWith('%')) alpha = parseFloat(alphaStr) / 100;
-      else alpha = parseFloat(alphaStr);
-    }
-
-    let r = 0, g = 0, b = 0;
-    if (lightness >= 0.95) {
-      r = 248; g = 250; b = 252; // #f8fafc
-    } else if (lightness >= 0.88) {
-      r = 241; g = 245; b = 249; // #f1f5f9
-    } else if (lightness >= 0.80) {
-      r = 226; g = 232; b = 240; // #e2e8f0
-    } else if (lightness >= 0.65) {
-      r = 203; g = 213; b = 225; // #cbd5e1
-    } else if (lightness >= 0.45) {
-      r = 100; g = 116; b = 139; // #64748b
-    } else if (lightness >= 0.25) {
-      r = 51; g = 65; b = 85; // #334155
-    } else {
-      r = 15; g = 23; b = 42; // #0f172a
-    }
-
-    if (alpha < 1 && !isNaN(alpha)) {
-      return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})`;
-    }
-    return `rgb(${r}, ${g}, ${b})`;
-  } catch {
-    return 'rgb(0, 0, 0)';
-  }
-}
-
-function sanitizeOklchInDocument(clonedDoc: Document): void {
-  try {
-    const styleElements = clonedDoc.querySelectorAll('style');
-    styleElements.forEach((styleEl) => {
-      if (styleEl.textContent && styleEl.textContent.includes('oklch')) {
-        styleEl.textContent = styleEl.textContent.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
-      }
-    });
-
-    const allNodes = clonedDoc.querySelectorAll('*');
-    allNodes.forEach((node) => {
-      const el = node as HTMLElement;
-      if (el.getAttribute) {
-        const inlineStyle = el.getAttribute('style');
-        if (inlineStyle && inlineStyle.includes('oklch')) {
-          const cleaned = inlineStyle.replace(/oklch\([^)]+\)/gi, (match) => convertOklchToRgb(match));
-          el.setAttribute('style', cleaned);
-        }
-      }
-    });
-  } catch (err) {
-    console.warn('Warning during oklch CSS sanitization for html2canvas:', err);
-  }
-}
-
-export async function captureCanvasFromElement(element: HTMLElement): Promise<HTMLCanvasElement> {
-  const originalTransform = element.style.transform;
-  const originalWidth = element.style.width;
-
-  element.style.transform = 'none';
-  element.style.width = '210mm';
-
-  // Adaptive scale to prevent canvas memory limit crashes on mobile browsers or restricted environments
-  const isMobileDevice = window.innerWidth < 768 || /Mobi|Android|iPhone/i.test(navigator.userAgent);
-  const renderScale = isMobileDevice ? 1.5 : 2.0;
-
-  const canvas = await html2canvas(element, {
-    scale: renderScale,
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    backgroundColor: '#ffffff',
-    windowWidth: 1240,
-    scrollX: 0,
-    scrollY: 0,
-    imageTimeout: 0,
-    onclone: (clonedDoc: Document) => {
-      sanitizeOklchInDocument(clonedDoc);
-      // Convert all canvas elements in clone to data URL images to prevent taint/security errors
-      const canvases = clonedDoc.querySelectorAll('canvas');
-      canvases.forEach((origCanvas) => {
-        try {
-          const dataUrl = origCanvas.toDataURL('image/png');
-          const img = clonedDoc.createElement('img');
-          img.src = dataUrl;
-          img.style.width = `${origCanvas.width}px`;
-          img.style.height = `${origCanvas.height}px`;
-          img.style.display = 'block';
-          img.className = origCanvas.className;
-          origCanvas.parentNode?.replaceChild(img, origCanvas);
-        } catch (e) {
-          // ignore
-        }
-      });
-    },
-  });
-
-  element.style.transform = originalTransform;
-  element.style.width = originalWidth;
-
-  return canvas;
-}
-
 export async function generatePdfBlobForDocument(
   doc: FiscalDocument,
   customization?: DanfeCustomization
 ): Promise<Blob> {
   const existingElement = document.getElementById('danfe-native-preview-element');
-  const zoomWrapper = document.getElementById('danfe-zoom-wrapper');
-
-  let targetContainer: HTMLElement;
-  let isTemp = false;
-  let tempContainer: HTMLDivElement | null = null;
+  let targetEl = existingElement;
+  let tempContainer: HTMLElement | null = null;
   let root: any = null;
 
-  if (existingElement) {
-    targetContainer = existingElement;
-  } else {
+  if (!targetEl) {
     tempContainer = document.createElement('div');
-    tempContainer.id = `temp-danfe-mount-${Date.now()}`;
     tempContainer.style.position = 'fixed';
     tempContainer.style.left = '0';
     tempContainer.style.top = '0';
@@ -169,46 +42,34 @@ export async function generatePdfBlobForDocument(
     );
 
     await new Promise((resolve) => setTimeout(resolve, 350));
-    targetContainer = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
-    isTemp = true;
+    targetEl = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
   }
 
-  const originalTransform = zoomWrapper ? zoomWrapper.style.transform : '';
-  if (zoomWrapper) zoomWrapper.style.transform = 'none';
+  const opt = {
+    margin: 0,
+    image: { type: 'jpeg' as const, quality: 0.98 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      letterRendering: true,
+    },
+    jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
+  };
 
-  const pageSheets = Array.from(targetContainer.querySelectorAll('.danfe-page-sheet')) as HTMLElement[];
+  const pdfBlob = await html2pdf().from(targetEl).set(opt).outputPdf('blob');
 
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'mm',
-    format: 'a4',
-    compress: true,
-  });
-
-  const pdfWidth = 210;
-  const pdfHeight = 297;
-
-  if (pageSheets.length > 0) {
-    for (let i = 0; i < pageSheets.length; i++) {
-      if (i > 0) pdf.addPage('a4', 'portrait');
-      const pageCanvas = await captureCanvasFromElement(pageSheets[i]);
-      const imgData = pageCanvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-    }
-  } else {
-    const canvas = await captureCanvasFromElement(targetContainer);
-    const imgData = canvas.toDataURL('image/png');
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
-  }
-
-  if (zoomWrapper) zoomWrapper.style.transform = originalTransform;
-
-  if (isTemp && root && tempContainer) {
-    root.unmount();
+  if (root && tempContainer) {
+    try {
+      root.unmount();
+    } catch (e) {}
+    document.body.removeChild(tempContainer);
+  } else if (tempContainer) {
     document.body.removeChild(tempContainer);
   }
 
-  return pdf.output('blob');
+  return pdfBlob;
 }
 
 export async function downloadDanfePdf(
@@ -217,19 +78,72 @@ export async function downloadDanfePdf(
   customization?: DanfeCustomization
 ): Promise<void> {
   try {
-    const blob = await generatePdfBlobForDocument(doc, customization);
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
+    const existingElement = document.getElementById('danfe-native-preview-element');
+    let targetEl = existingElement;
+    let tempContainer: HTMLElement | null = null;
+    let root: any = null;
+
+    if (!targetEl) {
+      tempContainer = document.createElement('div');
+      tempContainer.style.position = 'fixed';
+      tempContainer.style.left = '0';
+      tempContainer.style.top = '0';
+      tempContainer.style.width = '210mm';
+      tempContainer.style.opacity = '0';
+      tempContainer.style.pointerEvents = 'none';
+      tempContainer.style.zIndex = '-9999';
+      tempContainer.style.backgroundColor = '#ffffff';
+      document.body.appendChild(tempContainer);
+
+      root = createRoot(tempContainer);
+      root.render(
+        React.createElement(DanfeView, {
+          doc,
+          customization: customization || {
+            showCanhoto: true,
+            canhotoPosition: 'top',
+            compactMode: false,
+            showIBPT: true,
+            fontSize: 'sm',
+          },
+          idToTarget: `temp-danfe-inner-${doc.id}`,
+        })
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      targetEl = document.getElementById(`temp-danfe-inner-${doc.id}`) || tempContainer;
+    }
+
     const cleanChave = doc.chave.replace(/\D/g, '');
     const cleanNumero = doc.numero.replace(/\D/g, '') || '0';
-    link.download = `DANFE_${doc.docType}_N${cleanNumero}_${cleanChave.slice(-8)}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const filename = `DANFE_${doc.docType}_N${cleanNumero}_${cleanChave.slice(-8)}.pdf`;
+
+    const opt = {
+      margin: 0,
+      filename,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        letterRendering: true,
+      },
+      jsPDF: { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const },
+    };
+
+    await html2pdf().from(targetEl).set(opt).save();
+
+    if (root && tempContainer) {
+      try {
+        root.unmount();
+      } catch (e) {}
+      document.body.removeChild(tempContainer);
+    } else if (tempContainer) {
+      document.body.removeChild(tempContainer);
+    }
   } catch (error) {
-    console.error('Erro ao baixar PDF da DANFE:', error);
+    console.error('Erro ao baixar PDF da DANFE com html2pdf:', error);
     alert('Ocorreu uma falha ao gerar o PDF. Por favor tente novamente.');
   }
 }
