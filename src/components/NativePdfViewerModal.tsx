@@ -53,8 +53,11 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if (mobile && zoomScale === 1) {
-        setZoomScale(0.45);
+      if (mobile) {
+        const screenWidth = window.innerWidth - 16;
+        const a4WidthPx = 794;
+        const calculatedScale = Math.min(Math.max(screenWidth / a4WidthPx, 0.32), 0.95);
+        setZoomScale(calculatedScale);
       }
     };
 
@@ -64,9 +67,13 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
   }, []);
 
   const handleZoomIn = () => setZoomScale((prev) => Math.min(prev + 0.15, 1.8));
-  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.15, 0.35));
+  const handleZoomOut = () => setZoomScale((prev) => Math.max(prev - 0.15, 0.32));
   const handleResetZoom = () => setZoomScale(1);
-  const handleFitMobile = () => setZoomScale(0.45);
+  const handleFitMobile = () => {
+    const screenWidth = window.innerWidth - 16;
+    const calculatedScale = Math.min(Math.max(screenWidth / 794, 0.32), 0.95);
+    setZoomScale(calculatedScale);
+  };
 
   const handleDirectDownload = async () => {
     setIsDownloading(true);
@@ -466,27 +473,36 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
         </div>
 
         {/* FIXED MOBILE BOTTOM TOOLBAR */}
-        <div className="sm:hidden bg-slate-900 border-t border-slate-800 p-2.5 flex items-center justify-between gap-2 z-10 shrink-0">
+        <div className="sm:hidden bg-slate-900 border-t border-slate-800 p-2.5 flex items-center justify-between gap-1.5 z-10 shrink-0">
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={() => {
               onClose();
               onOpenUploadNew();
             }}
-            className="flex-1 py-2 px-3 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            className="py-2 px-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl flex items-center justify-center gap-1 cursor-pointer shadow-xs shrink-0"
           >
             <PlusCircle className="w-4 h-4 text-blue-200" />
-            <span>+ Inserir Outro XML</span>
+            <span>+ XML</span>
+          </motion.button>
+
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={handlePrint}
+            className="py-2 px-2.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl flex items-center justify-center gap-1 cursor-pointer shrink-0"
+          >
+            <Printer className="w-4 h-4 text-slate-300" />
+            <span>Imprimir</span>
           </motion.button>
 
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={handleDirectDownload}
             disabled={isDownloading}
-            className="py-2 px-3 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+            className="py-2 px-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50 shrink-0 flex-1"
           >
             <Download className="w-4 h-4" />
-            <span>Baixar PDF</span>
+            <span>{isDownloading ? 'Gerando...' : 'Baixar PDF'}</span>
           </motion.button>
         </div>
       </motion.div>
