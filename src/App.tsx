@@ -28,22 +28,23 @@ export default function App() {
     fontSize: 'sm',
   });
 
-  // Load initial demo sample
-  useEffect(() => {
-    try {
-      const sampleDocs = SAMPLE_XMLS.map((s) => parseFiscalXml(s.xml, `${s.id}.xml`));
-      setDocuments(sampleDocs);
-    } catch (err) {
-      console.error('Erro ao carregar notas de exemplo:', err);
-    }
-  }, []);
+  // Load initial demo sample removed
+
 
   const handleFilesParsed = (newDocs: FiscalDocument[]) => {
     setDocuments((prev) => {
-      const existingChaves = new Set(prev.map((d) => d.chave));
-      const filtered = newDocs.filter((d) => !existingChaves.has(d.chave));
-      return [...filtered, ...prev];
+      const newChaves = new Set(newDocs.map((d) => d.chave));
+      const remaining = prev.filter((d) => !newChaves.has(d.chave));
+      return [...newDocs, ...remaining];
     });
+  };
+
+  const handleViewDocDirectly = (doc: FiscalDocument) => {
+    setDocuments((prev) => {
+      const remaining = prev.filter((d) => d.id !== doc.id && d.chave !== doc.chave);
+      return [doc, ...remaining];
+    });
+    setSelectedDocId(doc.id);
   };
 
   const handleSelectSample = (sampleXml: string, filename: string) => {
@@ -234,7 +235,7 @@ export default function App() {
           <BatchUploadArea
             onFilesParsed={handleFilesParsed}
             onSelectSample={handleSelectSample}
-            onViewDocDirectly={(doc) => setSelectedDocId(doc.id)}
+            onViewDocDirectly={handleViewDocDirectly}
           />
         </section>
 
@@ -260,18 +261,21 @@ export default function App() {
       </main>
 
       {/* NATIVE INTEGRATED PDF VIEWER MODAL */}
-      {selectedDoc && (
-        <NativePdfViewerModal
-          doc={selectedDoc}
-          customization={customization}
-          onClose={() => setSelectedDocId(null)}
-          onOpenUploadNew={handleOpenUploadNew}
-          onPrevDoc={handlePrevDoc}
-          onNextDoc={handleNextDoc}
-          hasPrev={selectedDocIndex > 0}
-          hasNext={selectedDocIndex < documents.length - 1}
-        />
-      )}
+      <AnimatePresence>
+        {selectedDoc && (
+          <NativePdfViewerModal
+            key={selectedDoc.id}
+            doc={selectedDoc}
+            customization={customization}
+            onClose={() => setSelectedDocId(null)}
+            onOpenUploadNew={handleOpenUploadNew}
+            onPrevDoc={handlePrevDoc}
+            onNextDoc={handleNextDoc}
+            hasPrev={selectedDocIndex > 0}
+            hasNext={selectedDocIndex < documents.length - 1}
+          />
+        )}
+      </AnimatePresence>
 
       {/* SETTINGS MODAL */}
       {showSettingsModal && (

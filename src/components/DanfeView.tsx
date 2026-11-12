@@ -597,8 +597,9 @@ export const DanfeView: React.FC<DanfeViewProps> = ({
             )}
 
             {/* PAGE NUMBER FOOTER */}
-            <div className="absolute bottom-2 right-4 text-[7.5px] font-mono font-bold text-[#94a3b8]">
-              PÁGINA {pageNum} DE {totalPages}
+            <div className="absolute bottom-2 left-4 right-4 text-[7.5px] font-mono font-bold text-[#64748b] flex justify-between border-t border-slate-200 pt-1">
+              <span>Neves Leitor & DANFE</span>
+              <span>PÁGINA {pageNum} DE {totalPages}</span>
             </div>
           </div>
         );

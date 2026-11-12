@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileCode, CheckCircle2, AlertCircle, Sparkles, Eye, ArrowRight, FileCheck } from 'lucide-react';
+import { UploadCloud, FileCode, CheckCircle2, AlertCircle, Sparkles, Eye, ArrowRight, FileCheck, ScanLine } from 'lucide-react';
 import JSZip from 'jszip';
 import { motion, AnimatePresence } from 'motion/react';
 import { parseFiscalXml } from '../utils/xmlParser';
@@ -18,7 +18,7 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
   onViewDocDirectly,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<{
     count: number;
@@ -27,78 +27,107 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pastedXml, setPastedXml] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounter = useRef(0);
 
   const processFiles = async (files: FileList | File[]) => {
-    setLoading(true);
+    setIsScanning(true); // Start scanning effect
     setErrorMessage(null);
     setSuccessBanner(null);
 
-    const parsedDocs: FiscalDocument[] = [];
-    const errors: string[] = [];
+    try {
+      const parsedDocs: FiscalDocument[] = [];
+      const errors: string[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-
-      try {
-        if (file.name.endsWith('.zip')) {
-          const zip = new JSZip();
-          const zipContent = await zip.loadAsync(file);
-
-          for (const filename of Object.keys(zipContent.files)) {
-            if (filename.toLowerCase().endsWith('.xml') && !zipContent.files[filename].dir) {
-              const xmlText = await zipContent.files[filename].async('string');
-              try {
-                const doc = parseFiscalXml(xmlText, filename.split('/').pop() || filename);
-                parsedDocs.push(doc);
-              } catch (e: any) {
-                errors.push(`Erro no arquivo ${filename}: ${e.message}`);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        try {
+          if (file.name.endsWith('.zip')) {
+            const zip = new JSZip();
+            const zipContent = await zip.loadAsync(file);
+            for (const filename of Object.keys(zipContent.files)) {
+              if (filename.toLowerCase().endsWith('.xml') && !zipContent.files[filename].dir) {
+                const xmlText = await zipContent.files[filename].async('string');
+                try {
+                  const doc = parseFiscalXml(xmlText, filename.split('/').pop() || filename);
+                  parsedDocs.push(doc);
+                } catch (e: any) {
+                  errors.push(`Erro no arquivo ${filename}: ${e.message}`);
+                }
               }
             }
-          }
-        } else if (file.name.toLowerCase().endsWith('.xml') || file.type === 'text/xml' || file.type === 'application/xml') {
-          const text = await file.text();
-          const doc = parseFiscalXml(text, file.name);
-          parsedDocs.push(doc);
-        } else {
-          const text = await file.text();
-          if (text.includes('<nfeProc') || text.includes('<NFe') || text.includes('<cteProc') || text.includes('<mdfeProc')) {
+          } else if (file.name.toLowerCase().endsWith('.xml') || file.type === 'text/xml' || file.type === 'application/xml') {
+            const text = await file.text();
             const doc = parseFiscalXml(text, file.name);
             parsedDocs.push(doc);
           } else {
-            errors.push(`O arquivo ${file.name} não é um XML fiscal válido (NF-e, NFC-e, CT-e, MDF-e).`);
+            const text = await file.text();
+            if (text.includes('<nfeProc') || text.includes('<NFe') || text.includes('<cteProc') || text.includes('<mdfeProc')) {
+              const doc = parseFiscalXml(text, file.name);
+              parsedDocs.push(doc);
+            } else {
+              errors.push(`O arquivo ${file.name} não é um XML fiscal válido (NF-e, NFC-e, CT-e, MDF-e).`);
+            }
           }
+        } catch (err: any) {
+          errors.push(`Falha ao ler ${file.name}: ${err.message}`);
         }
-      } catch (err: any) {
-        errors.push(`Falha ao ler ${file.name}: ${err.message}`);
       }
+
+      // Smooth quick scan feedback without locking UI thread
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      if (parsedDocs.length > 0) {
+        onFilesParsed(parsedDocs);
+        // Auto-open viewer for the first document
+        onViewDocDirectly(parsedDocs[0]);
+        setSuccessBanner({
+          count: parsedDocs.length,
+          lastDoc: parsedDocs[0],
+        });
+      }
+
+      if (errors.length > 0) {
+        setErrorMessage(errors.join(' | '));
+      }
+    } catch (globalErr: any) {
+      setErrorMessage(`Erro no processamento dos arquivos: ${globalErr.message || globalErr}`);
+    } finally {
+      setIsScanning(false);
     }
+  };
 
-    setLoading(false);
-
-    if (parsedDocs.length > 0) {
-      onFilesParsed(parsedDocs);
-      setSuccessBanner({
-        count: parsedDocs.length,
-        lastDoc: parsedDocs[0],
-      });
-    }
-
-    if (errors.length > 0) {
-      setErrorMessage(errors.join(' | '));
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
     }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(true);
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isDragging) {
+      setIsDragging(true);
+    }
   };
 
-  const handleDragLeave = () => {
-    setIsDragging(false);
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setIsDragging(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFiles(e.dataTransfer.files);
@@ -107,7 +136,13 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processFiles(e.target.files);
+      const files = Array.from(e.target.files);
+      // Reset input value so re-selecting the exact same file fires onChange reliably
+      e.target.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      processFiles(files);
     }
   };
 
@@ -192,6 +227,7 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
 
       {/* TREEUNFE-STYLE ANIMATED DRAG & DROP AREA */}
       <motion.div
+        onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -199,7 +235,7 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
         whileHover={{ scale: 1.003 }}
         className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer relative overflow-hidden ${
           isDragging
-            ? 'border-blue-500 bg-blue-50/90 shadow-xl shadow-blue-500/10 scale-[1.008]'
+            ? 'border-blue-500 bg-blue-50/90 shadow-xl shadow-blue-500/15 ring-4 ring-blue-500/20 scale-[1.008]'
             : 'border-slate-300/90 bg-white hover:border-blue-400 hover:bg-slate-50/80 shadow-sm'
         }`}
       >
@@ -212,13 +248,63 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
           className="hidden"
         />
 
-        {/* LASER SCANNING BEAM ANIMATION ON DRAG/LOADING */}
-        {(isDragging || loading) && (
-          <motion.div
-            animate={{ x: ['-100%', '100%'] }}
-            transition={{ repeat: Infinity, duration: 1.8, ease: 'easeInOut' }}
-            className="absolute top-0 left-0 w-1/2 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent z-20 shadow-sm shadow-blue-500"
-          />
+        {/* DRAG-OVER STATE: PURE CSS / ZERO CPU IMPACT */}
+        {isDragging && !isScanning && (
+          <div className="absolute inset-0 z-20 pointer-events-none rounded-2xl bg-blue-500/10 backdrop-blur-[1px] flex flex-col items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="px-5 py-2.5 bg-blue-600 text-white font-extrabold text-xs rounded-xl shadow-xl flex items-center gap-2 border border-blue-400/40"
+            >
+              <UploadCloud className="w-4 h-4 animate-bounce" />
+              <span>Solte seus arquivos XML aqui para converter</span>
+            </motion.div>
+          </div>
+        )}
+
+        {/* HIGH-TECH HARDWARE-ACCELERATED FULL-CARD LASER SCANNER */}
+        {isScanning && (
+          <div className="absolute inset-0 z-30 pointer-events-none overflow-hidden rounded-2xl bg-slate-950/85 backdrop-blur-[2px] flex flex-col items-center justify-center p-4">
+            {/* Cyber Matrix Grid Background */}
+            <div
+              className="absolute inset-0 opacity-25"
+              style={{
+                backgroundImage: 'radial-gradient(circle, #38bdf8 1.5px, transparent 1.5px)',
+                backgroundSize: '24px 24px',
+              }}
+            />
+
+            {/* Glowing Laser Sweep Line spanning entire width */}
+            <motion.div
+              animate={{ top: ['2%', '96%', '2%'] }}
+              transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+              className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_20px_#38bdf8,0_0_35px_#0284c7] z-20"
+            >
+              <div className="absolute -top-8 inset-x-0 h-16 bg-gradient-to-b from-cyan-500/15 via-cyan-400/30 to-transparent blur-xs pointer-events-none" />
+              <div className="absolute top-0 inset-x-0 h-28 bg-gradient-to-b from-cyan-500/25 to-transparent pointer-events-none" />
+            </motion.div>
+
+            {/* Center Telemetry HUD */}
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="z-30 px-6 py-4 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-cyan-400/40 shadow-2xl shadow-cyan-500/20 flex items-center gap-3.5 text-white"
+            >
+              <div className="relative">
+                <div className="w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                <div className="absolute inset-0 border-2 border-cyan-400/30 rounded-full animate-ping" />
+              </div>
+              <div className="text-left">
+                <p className="text-xs font-extrabold tracking-wide text-cyan-300 uppercase flex items-center gap-1.5">
+                  <ScanLine className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Digitalizando XML & Gerando DANFE A4</span>
+                </p>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                  Processando dados fiscais com padrão oficial SEFAZ...
+                </p>
+              </div>
+            </motion.div>
+          </div>
         )}
 
         <div className="max-w-md mx-auto flex flex-col items-center relative z-10">
@@ -280,22 +366,6 @@ export const BatchUploadArea: React.FC<BatchUploadAreaProps> = ({
           </div>
         </div>
 
-        {/* LOADING OVERLAY */}
-        <AnimatePresence>
-          {loading && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-white/95 backdrop-blur-xs flex flex-col items-center justify-center z-30"
-            >
-              <div className="w-10 h-10 border-3 border-blue-600 border-t-transparent rounded-full animate-spin mb-3 shadow-md" />
-              <p className="text-xs font-bold text-slate-900 tracking-wide">
-                Lendo XML e convertendo para DANFE A4 original...
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </motion.div>
 
       {/* ERROR FEEDBACK */}

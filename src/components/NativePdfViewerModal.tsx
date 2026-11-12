@@ -144,14 +144,13 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
   ];
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col z-50 overflow-hidden"
-      >
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.18 }}
+      className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col z-50 overflow-hidden"
+    >
         {/* TOP CONTROL BAR */}
         <div className="bg-slate-900 text-white px-3 sm:px-6 py-2.5 flex items-center justify-between border-b border-slate-800 shrink-0 gap-2">
           {/* LEFT: PROMINENT VOLTAR (BACK) BUTTON & DOCUMENT TITLE */}
@@ -332,7 +331,7 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
               id="danfe-zoom-wrapper"
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: zoomScale, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
               className="origin-top my-2 sm:my-4"
             >
               <DanfeView
@@ -534,6 +533,5 @@ export const NativePdfViewerModal: React.FC<NativePdfViewerModalProps> = ({
 
         </div>
       </motion.div>
-    </AnimatePresence>
   );
 };

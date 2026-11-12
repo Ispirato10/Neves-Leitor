@@ -137,7 +137,10 @@ export function parseFiscalXml(xmlString: string, filename: string = 'documento.
 
   // Detect Event Cancelation
   const procEventoNFe = xmlDoc.querySelector('procEventoNFe') || xmlDoc.querySelector('procEventoCTe');
-  const isCanceled = !!procEventoNFe || xmlString.includes('101') || xmlString.includes('135') || xmlString.toLowerCase().includes('cancelamento');
+  // Check for specific tag indicating cancellation or event code 101/135
+  const eventCodeNode = xmlDoc.querySelector('cStat');
+  const eventCode = eventCodeNode ? eventCodeNode.textContent : '';
+  const isCanceled = !!procEventoNFe || eventCode === '101' || eventCode === '135' || xmlString.toLowerCase().includes('cancelamento');
 
   // Detect Document Type
   let docType: DocType = 'NFE';
